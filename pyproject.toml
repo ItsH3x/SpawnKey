@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spawnkey"
+version = "0.1.0"
+description = "Dropdown window manager configurator, script generator, and shortcut manager for Linux"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = []
+
+[project.optional-dependencies]
+gui-gtk = ["PyGObject>=3.46"]
+x11 = ["python-xlib>=0.33"]
+
+[project.scripts]
+spawnkey = "spawnkey.cli:main"
+spawnkey-gui = "spawnkey.gui.app:launch_gui"
+
+[tool.setuptools.packages.find]
+where = ["src"]

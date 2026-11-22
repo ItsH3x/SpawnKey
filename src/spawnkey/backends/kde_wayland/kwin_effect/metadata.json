@@ -1,0 +1,13 @@
+{
+    "KPlugin": {
+        "Category": "Appearance",
+        "Description": "Recorta esquinas redondeadas en ventanas desplegables activas de SpawnKey",
+        "EnabledByDefault": true,
+        "Id": "spawnkey_corners",
+        "License": "GPL",
+        "Name": "SpawnKey Rounded Corners"
+    },
+    "org.kde.kwin.effect": {
+        "internal": true
+    }
+}
