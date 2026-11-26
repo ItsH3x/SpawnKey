@@ -1,0 +1,92 @@
+# Maintainer: SpawnKey Contributors <https://github.com/ItsH3x/SpawnKey>
+pkgname=spawnkey
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Dropdown window manager configurator, script generator, and shortcut manager for Linux (zero resident daemon)"
+arch=('any')
+url="https://github.com/ItsH3x/SpawnKey"
+license=('MIT')
+depends=('python' 'python-gobject' 'gtk4' 'python-dbus')
+makedepends=('python-build' 'python-installer' 'python-wheel' 'python-setuptools')
+optdepends=(
+    'python-xlib: X11 fallback window control support'
+    'kwin: KDE Plasma 6 Wayland window integration and optional rounded corners effect'
+    'cmake: build the optional KDE KWin rounded corners C++ effect'
+    'extra-cmake-modules: build the optional KDE KWin rounded corners C++ effect'
+    'gnome-shell: GNOME Wayland opt-in extension integration'
+    'hyprland: native Hyprland Wayland backend support'
+    'sway: native Sway Wayland backend support'
+    'xdg-desktop-portal: XDG GlobalShortcuts portal support'
+)
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+_enter_srcdir() {
+    if [[ -d "$srcdir/$pkgname-$pkgver" ]]; then
+        cd "$srcdir/$pkgname-$pkgver"
+    elif [[ -d "$srcdir/SpawnKey-$pkgver" ]]; then
+        cd "$srcdir/SpawnKey-$pkgver"
+    else
+        cd "$startdir"
+    fi
+}
+
+build() {
+    _enter_srcdir
+    python -m build --wheel --no-isolation
+}
+
+check() {
+    _enter_srcdir
+    if [[ -d tests ]]; then
+        PYTHONPATH=src python -m unittest discover -s tests
+    fi
+}
+
+package() {
+    _enter_srcdir
+    python -m installer --destdir="$pkgdir" dist/*.whl
+
+    install -dm755 "$pkgdir/usr/share/applications"
+    cat > "$pkgdir/usr/share/applications/io.github.spawnkey.App.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=SpawnKey
+GenericName=Dropdown Window Manager
+GenericName[es]=Administrador de Dropdowns
+Comment=Create keyboard-triggered dropdown windows for any application
+Comment[es]=Crea ventanas dropdown con atajos de teclado para cualquier aplicación
+Exec=spawnkey-gui
+Icon=io.github.spawnkey.App
+Terminal=false
+Categories=Utility;Settings;System;
+Keywords=dropdown;quake;shortcut;window;
+Keywords[es]=dropdown;quake;shortcut;atajo;ventana;
+StartupWMClass=io.github.spawnkey.App
+EOF
+    chmod 644 "$pkgdir/usr/share/applications/io.github.spawnkey.App.desktop"
+
+    install -Dm644 assets/spawnkey.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/io.github.spawnkey.App.svg"
+    install -Dm644 assets/spawnkey.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/spawnkey.svg"
+    install -Dm644 assets/io.github.spawnkey.App.metainfo.xml "$pkgdir/usr/share/metainfo/io.github.spawnkey.App.metainfo.xml"
+
+    for _lang in es en; do
+        if [[ -f "src/spawnkey/locale/${_lang}/LC_MESSAGES/spawnkey.mo" ]]; then
+            install -Dm644 "src/spawnkey/locale/${_lang}/LC_MESSAGES/spawnkey.mo" \
+                "$pkgdir/usr/share/locale/${_lang}/LC_MESSAGES/spawnkey.mo"
+        fi
+    done
+
+    local _ext_src="src/spawnkey/backends/gnome_wayland/extension/spawnkey@spawnkey.github.io"
+    local _ext_dst="$pkgdir/usr/share/gnome-shell/extensions/spawnkey@spawnkey.github.io"
+    if [[ -d "$_ext_src" ]]; then
+        install -dm755 "$_ext_dst"
+        for _file in "$_ext_src"/*; do
+            if [[ -f "$_file" ]]; then
+                install -Dm644 "$_file" "$_ext_dst/$(basename "$_file")"
+            fi
+        done
+    fi
+
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

@@ -51,7 +51,45 @@ def get_backends(
             sc = gnome_sc
         return (GnomeWaylandWindowBackend(resolved_paths), sc)
 
+    if info.backend is BackendKind.HYPRLAND:
+        from spawnkey.backends.hyprland import (
+            HyprlandShortcutBackend,
+            HyprlandWindowBackend,
+        )
+
+        hypr_sc = HyprlandShortcutBackend(resolved_paths)
+        if prefer_portal_shortcuts:
+            from spawnkey.backends.portal_shortcuts import XDGPortalShortcutBackend
+
+            sc = XDGPortalShortcutBackend(resolved_paths, delegate=hypr_sc)
+        else:
+            sc = hypr_sc
+        return (HyprlandWindowBackend(resolved_paths), sc)
+
+    if info.backend is BackendKind.SWAY:
+        from spawnkey.backends.sway import (
+            SwayShortcutBackend,
+            SwayWindowBackend,
+        )
+
+        sway_sc = SwayShortcutBackend(resolved_paths)
+        if prefer_portal_shortcuts:
+            from spawnkey.backends.portal_shortcuts import XDGPortalShortcutBackend
+
+            sc = XDGPortalShortcutBackend(resolved_paths, delegate=sway_sc)
+        else:
+            sc = sway_sc
+        return (SwayWindowBackend(resolved_paths), sc)
+
+    if info.backend is BackendKind.X11:
+        from spawnkey.backends.x11 import (
+            X11ShortcutBackend,
+            X11WindowBackend,
+        )
+
+        return (X11WindowBackend(resolved_paths), X11ShortcutBackend(resolved_paths))
+
     raise UnsupportedBackendError(
         f"El backend '{info.backend.value}' (sesión={info.session_type}, escritorio={info.desktop}) "
-        "aún no está implementado en esta fase. Actualmente activos: kde-wayland, gnome-wayland."
+        "aún no está implementado. Activos: kde-wayland, gnome-wayland, hyprland, sway, x11."
     )

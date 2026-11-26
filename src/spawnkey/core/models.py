@@ -10,9 +10,143 @@ import re
 import shlex
 from typing import Any
 
+from spawnkey.i18n import _
+
 
 SCHEMA_VERSION = 1
 _ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+_ENV_KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_WRAPPER_BINARIES = frozenset(
+    {"env", "nohup", "dbus-launch", "xdg-terminal-exec", "gtk-launch", "gio"}
+)
+_ENV_VALUE_FLAGS = frozenset({"-u", "--unset", "-C", "--chdir", "-S", "--split-string"})
+_FLATPAK_TWO_TOKEN_FLAGS = frozenset(
+    {
+        "--branch",
+        "--arch",
+        "--command",
+        "--env",
+        "--filesystem",
+        "--nofilesystem",
+        "--talk-name",
+        "--own-name",
+        "--system-talk-name",
+        "--system-own-name",
+        "--socket",
+        "--nosocket",
+        "--device",
+        "--nodevice",
+        "--share",
+        "--unshare",
+        "--persist",
+        "--env-fd",
+        "--allow",
+        "--disallow",
+    }
+)
+
+
+def _is_env_assignment(token: str) -> bool:
+    eq = token.find("=")
+    if eq <= 0:
+        return False
+    key = token[:eq]
+    return "/" not in key and bool(_ENV_KEY_PATTERN.match(key))
+
+
+def infer_match_hint_from_cmd(exec_cmd: str) -> str:
+    """Infer an application match hint from a shell Exec command string.
+
+    Skips leading ``KEY=VAL`` assignments and common launcher wrappers
+    (``env``, ``nohup``, ``dbus-launch``, ``xdg-terminal-exec``, ``gtk-launch``,
+    ``gio``), and extracts the app ID / snap name for ``flatpak run`` and
+    ``snap run`` commands.
+    """
+    if not exec_cmd or not exec_cmd.strip():
+        return ""
+    try:
+        tokens = shlex.split(exec_cmd)
+    except ValueError:
+        tokens = exec_cmd.split()
+    if not tokens:
+        return ""
+
+    idx = 0
+    while idx < len(tokens):
+        tok = tokens[idx]
+        if _is_env_assignment(tok):
+            idx += 1
+            continue
+        base = Path(os.path.expanduser(tok)).name
+        if base == "env":
+            idx += 1
+            while idx < len(tokens):
+                flag = tokens[idx]
+                if flag == "--":
+                    idx += 1
+                    break
+                if _is_env_assignment(flag):
+                    idx += 1
+                    continue
+                if flag in _ENV_VALUE_FLAGS:
+                    idx += 2
+                    continue
+                if flag.startswith("-") and len(flag) > 1:
+                    idx += 1
+                    continue
+                break
+            continue
+        if base == "gio":
+            if idx + 2 < len(tokens) and tokens[idx + 1] == "launch":
+                return Path(os.path.expanduser(tokens[idx + 2])).stem
+            idx += 1
+            if idx < len(tokens) and tokens[idx] == "--":
+                idx += 1
+            continue
+        if base in _WRAPPER_BINARIES:
+            idx += 1
+            if idx < len(tokens) and tokens[idx] == "--":
+                idx += 1
+            continue
+        break
+
+    if idx >= len(tokens):
+        return ""
+
+    remaining = tokens[idx:]
+    first = remaining[0]
+    first_base = Path(os.path.expanduser(first)).name
+
+    if first_base == "flatpak" and "run" in remaining[1:]:
+        run_idx = remaining.index("run", 1)
+        pos = run_idx + 1
+        while pos < len(remaining):
+            arg = remaining[pos]
+            if arg == "--":
+                pos += 1
+                if pos < len(remaining):
+                    candidate = remaining[pos]
+                    return candidate.split("/", 1)[0] if "/" in candidate and not candidate.startswith("/") else candidate
+                break
+            if arg in _FLATPAK_TWO_TOKEN_FLAGS:
+                pos += 2
+                continue
+            if arg.startswith("-"):
+                pos += 1
+                continue
+            return arg.split("/", 1)[0] if "/" in arg and not arg.startswith("/") else arg
+
+    if first_base == "snap" and "run" in remaining[1:]:
+        run_idx = remaining.index("run", 1)
+        pos = run_idx + 1
+        while pos < len(remaining):
+            arg = remaining[pos]
+            if arg.startswith("--"):
+                pos += 1
+                continue
+            return arg
+
+    return Path(os.path.expanduser(first)).stem
 
 
 class SourceType(str, Enum):
@@ -28,18 +162,18 @@ class LifecycleMode(str, Enum):
     @property
     def label(self) -> str:
         if self is LifecycleMode.PERSISTENT:
-            return "Persistente (minimizar)"
+            return _("Persistent (minimize)")
         if self is LifecycleMode.EPHEMERAL:
-            return "Efímero (cerrar al ocultar)"
-        return "Bandeja del sistema (tray)"
+            return _("Ephemeral (close on hide)")
+        return _("System tray")
 
     @property
     def short_description(self) -> str:
         if self is LifecycleMode.PERSISTENT:
-            return "Mantiene la ventana en segundo plano; el atajo la muestra o minimiza."
+            return _("Keeps the window in the background; the shortcut toggles or minimizes it.")
         if self is LifecycleMode.EPHEMERAL:
-            return "Lanza la app al mostrarla y cierra su proceso al ocultarla."
-        return "Para apps con icono en bandeja; restaura su estado normal al ocultarla."
+            return _("Launches the app when shown and terminates its process when hidden.")
+        return _("For apps with a tray icon; restores normal window state when hidden.")
 
 
 class SizeUnit(str, Enum):
@@ -97,7 +231,10 @@ class MonitorRect:
     def __post_init__(self) -> None:
         if self.width <= 1 or self.height <= 1:
             raise ValueError(
-                f"Las dimensiones del monitor deben ser mayores a 1px: {self.width}x{self.height}"
+                _("Monitor dimensions must be greater than 1px: {width}x{height}").format(
+                    width=self.width,
+                    height=self.height,
+                )
             )
 
 
@@ -141,6 +278,7 @@ class DropdownProfile:
     custom_x: float = 10.0
     custom_y: float = 0.0
     monitor_policy: MonitorPolicy = MonitorPolicy.CURSOR
+    relocate_on_toggle: bool = True
 
     # Appearance & interaction
     borderless: bool = True  # Always enforced to True by design
@@ -178,13 +316,9 @@ class DropdownProfile:
         # Windows managed by SpawnKey must never expose external titlebars/borders.
         self.borderless = True
 
-        # Infer a default match_hint from the executable basename when user enters a raw command.
+        # Infer a default match_hint from the executable basename / app ID when user enters a raw command.
         if not self.match_hint.strip() and self.exec_cmd.strip():
-            try:
-                first_token = shlex.split(self.exec_cmd)[0]
-            except ValueError:
-                first_token = self.exec_cmd.split()[0]
-            self.match_hint = Path(os.path.expanduser(first_token)).stem
+            self.match_hint = infer_match_hint_from_cmd(self.exec_cmd)
 
         if not self.shortcut_backend_id and self.id:
             self.shortcut_backend_id = f"spawnkey-{self.id}.desktop"
@@ -199,66 +333,95 @@ class DropdownProfile:
     def validate(self) -> None:
         if not self.id or not _ID_PATTERN.match(self.id):
             raise ValueError(
-                f"ID de perfil inválido '{self.id}': usa solo minúsculas, números, '-' o '_'."
+                _(
+                    "Invalid profile ID '{id}': use only lowercase letters, numbers, '-' or '_'."
+                ).format(id=self.id)
             )
         if not self.name or not self.name.strip():
-            raise ValueError("El nombre del dropdown no puede estar vacío.")
+            raise ValueError(_("Dropdown name cannot be empty."))
         if not self.exec_cmd or not self.exec_cmd.strip():
-            raise ValueError("El comando o ejecutable no puede estar vacío.")
+            raise ValueError(_("Command or executable cannot be empty."))
 
         if self.size_unit is SizeUnit.PERCENT:
             if not (1.0 <= self.width < 100.0):
                 raise ValueError(
-                    f"El ancho en porcentaje debe estar entre 1 y 99.9 (menor al monitor), recibido: {self.width}"
+                    _(
+                        "Percentage width must be between 1 and 99.9 (smaller than monitor), got: {width}"
+                    ).format(width=self.width)
                 )
             if not (1.0 <= self.height < 100.0):
                 raise ValueError(
-                    f"El alto en porcentaje debe estar entre 1 y 99.9 (menor al monitor), recibido: {self.height}"
+                    _(
+                        "Percentage height must be between 1 and 99.9 (smaller than monitor), got: {height}"
+                    ).format(height=self.height)
                 )
         else:
             if self.width < 50:
-                raise ValueError(f"El ancho en píxeles debe ser al menos 50px, recibido: {self.width}")
+                raise ValueError(
+                    _("Pixel width must be at least 50px, got: {width}").format(
+                        width=self.width
+                    )
+                )
             if self.height < 50:
-                raise ValueError(f"El alto en píxeles debe ser al menos 50px, recibido: {self.height}")
+                raise ValueError(
+                    _("Pixel height must be at least 50px, got: {height}").format(
+                        height=self.height
+                    )
+                )
 
         if self.position_mode is PositionMode.CUSTOM:
             if self.custom_position_unit is SizeUnit.PERCENT:
                 if not (0.0 <= self.custom_x < 100.0):
                     raise ValueError(
-                        f"La posición X en porcentaje debe estar entre 0 y 99.9, recibido: {self.custom_x}"
+                        _(
+                            "Percentage X position must be between 0 and 99.9, got: {x}"
+                        ).format(x=self.custom_x)
                     )
                 if not (0.0 <= self.custom_y < 100.0):
                     raise ValueError(
-                        f"La posición Y en porcentaje debe estar entre 0 y 99.9, recibido: {self.custom_y}"
+                        _(
+                            "Percentage Y position must be between 0 and 99.9, got: {y}"
+                        ).format(y=self.custom_y)
                     )
             else:
                 if self.custom_x < 0 or self.custom_y < 0:
-                    raise ValueError("Las coordenadas personalizadas en píxeles no pueden ser negativas.")
+                    raise ValueError(
+                        _("Custom pixel coordinates cannot be negative.")
+                    )
 
         if not (0.1 <= self.animation_scale <= 5.0):
             raise ValueError(
-                f"La escala de animación debe estar entre 0.1 y 5.0, recibido: {self.animation_scale}"
+                _("Animation scale must be between 0.1 and 5.0, got: {scale}").format(
+                    scale=self.animation_scale
+                )
             )
 
         if not (0.1 <= self.opacity <= 1.0):
             raise ValueError(
-                f"La opacidad debe estar entre 0.1 y 1.0, recibido: {self.opacity}"
+                _("Opacity must be between 0.1 and 1.0, got: {opacity}").format(
+                    opacity=self.opacity
+                )
             )
 
         if self.corner_radius < 0:
             raise ValueError(
-                f"El radio de esquinas no puede ser negativo, recibido: {self.corner_radius}"
+                _("Corner radius cannot be negative, got: {radius}").format(
+                    radius=self.corner_radius
+                )
             )
 
         if self.edge_margin < 0:
             raise ValueError(
-                f"El margen desde el borde no puede ser negativo, recibido: {self.edge_margin}"
+                _("Edge margin cannot be negative, got: {margin}").format(
+                    margin=self.edge_margin
+                )
             )
 
         if not (1000 <= int(self.startup_timeout_ms) <= 60000):
             raise ValueError(
-                "El tiempo de espera de arranque (startup_timeout_ms) debe estar entre 1000 y 60000 ms, "
-                f"recibido: {self.startup_timeout_ms}"
+                _(
+                    "Startup timeout (startup_timeout_ms) must be between 1000 and 60000 ms, got: {timeout}"
+                ).format(timeout=self.startup_timeout_ms)
             )
         self.startup_timeout_ms = int(self.startup_timeout_ms)
 
@@ -285,6 +448,7 @@ class DropdownProfile:
             "custom_x": self.custom_x,
             "custom_y": self.custom_y,
             "monitor_policy": self.monitor_policy.value,
+            "relocate_on_toggle": bool(self.relocate_on_toggle),
             "borderless": True,
             "hide_on_click_outside": self.hide_on_click_outside,
             "show_in_taskbar": self.show_in_taskbar,
@@ -325,6 +489,7 @@ class DropdownProfile:
             custom_x=float(data.get("custom_x", 10.0)),
             custom_y=float(data.get("custom_y", 0.0)),
             monitor_policy=MonitorPolicy(data.get("monitor_policy", MonitorPolicy.CURSOR.value)),
+            relocate_on_toggle=bool(data.get("relocate_on_toggle", True)),
             borderless=True,
             hide_on_click_outside=bool(data.get("hide_on_click_outside", True)),
             show_in_taskbar=bool(data.get("show_in_taskbar", False)),

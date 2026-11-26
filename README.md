@@ -8,7 +8,9 @@ Configurador y administrador de ventanas tipo *dropdown* para Linux activadas me
 - **Control flexible por perfil:**
   - Dimensiones en `%` o `px` siempre estrictamente menores al monitor activo.
   - Posicionamiento por cuadrícula 3x3 (con margen al borde) o coordenadas personalizadas `(X, Y)`.
-  - Selección de política de monitor (`cursor`, `focused`, `primary`).
+  - Selección de política de monitor (`cursor`, `focused`, `primary`), reubicación multi-monitor al alternar y vista previa multi-pantalla en la interfaz gráfica.
+  - Diálogo de Diagnósticos integrado en la GUI GTK 4 (equivalente visual a `spawnkey doctor`).
+  - Internacionalización `gettext` en español e inglés (`LANG` / `LC_MESSAGES`) y metadatos Freedesktop AppStream (`io.github.spawnkey.App.metainfo.xml`).
   - Ventanas sin barra de título ni bordes externos (`borderless`).
   - Animaciones `slide`, `fade`, `slide-fade` o `none`, opacidad por ventana y esquinas redondeadas (en compositores compatibles).
   - Modos de ciclo de vida: `persistent` (minimizar/restaurar), `ephemeral` (abrir/cerrar) y `tray` (aplicaciones de instancia única con bandeja del sistema).
@@ -19,8 +21,10 @@ Configurador y administrador de ventanas tipo *dropdown* para Linux activadas me
 | Entorno / Backend | Estado | Notas |
 | --- | --- | --- |
 | KDE Plasma 6 (Wayland) | Activo | Control de ventanas mediante scripts KWin 6 (QML/JS), atajos vía `kglobalaccel` y micro-efecto C++ opcional para esquinas redondeadas. |
-| GNOME (Wayland) | Soporte inicial | Atajos nativos vía `gsd-media-keys` (`gsettings`) + portal XDG `GlobalShortcuts`; control completo de ventanas sujeto a puente opt-in de GNOME Shell (fallback de ciclo de vida de procesos por defecto). |
-| X11 / Hyprland / Sway | En hoja de ruta | Respaldo EWMH/ICCCM en X11 e IPC nativo para Hyprland y Sway. |
+| GNOME (Wayland) | Activo | Atajos nativos vía `gsd-media-keys` (`gsettings`) + portal XDG `GlobalShortcuts`; control completo de geometría/estado instalando la extensión incluida (`./INSTALL.sh --gnome-extension`), con fallback de ciclo de vida si no está activa. |
+| Hyprland | Activo | Control nativo de ventanas, animaciones, opacidad y redondeo vía `hyprctl`, más atajos en bloque gestionado de configuración o portal XDG. |
+| Sway | Activo | Control nativo de ventanas flotantes y scratching/toggle vía `swaymsg`, más atajos en bloque gestionado de configuración o portal XDG. |
+| X11 | Activo (fallback universal) | Control EWMH/ICCCM (`xdotool`, `wmctrl`, `xprop`, `xrandr`) y registro de atajos nativo por escritorio (`xfce4`, `mate`, `cinnamon`, etc.) o X11. |
 
 ## Instalación de dependencias según la distribución
 
@@ -94,8 +98,10 @@ sudo apk add python3 py3-gobject3 gtk4.0 py3-dbus
 ./INSTALL.sh
 
 # Opciones adicionales del instalador:
-./INSTALL.sh --desktop        # Crea además un acceso directo en el Escritorio
-./INSTALL.sh --kwin-effect    # Compila e instala el efecto opcional de esquinas redondeadas en KDE 6
+./INSTALL.sh --desktop          # Crea además un acceso directo en el Escritorio
+./INSTALL.sh --kwin-effect      # Compila e instala el efecto opcional de esquinas redondeadas en KDE 6
+./INSTALL.sh --pacman-hook      # (Arch/CachyOS) Compila el efecto e instala un pacman hook para kwin
+./INSTALL.sh --gnome-extension  # Instala y habilita la extensión de GNOME Shell (GNOME Wayland)
 
 # Ejecutar la interfaz gráfica directamente desde el repositorio
 ./spawnkey-gui
@@ -105,6 +111,12 @@ Para instalar también el comando `spawnkey` en tu entorno Python de usuario:
 
 ```bash
 pip install --user -e .
+```
+
+En **Arch Linux / CachyOS**, puedes construir e instalar el paquete del sistema con `makepkg` usando `packaging/arch/PKGBUILD`:
+
+```bash
+makepkg -p packaging/arch/PKGBUILD -si
 ```
 
 Para desinstalar el acceso directo, el icono y el efecto opcional de KWin:
@@ -119,6 +131,9 @@ Para desinstalar el acceso directo, el icono y el efecto opcional de KWin:
 # Inspeccionar entorno detectado, capacidades y rutas XDG
 PYTHONPATH=src python3 -m spawnkey info
 
+# Diagnosticar entorno, permisos de scripts, atajos huérfanos y colisiones
+PYTHONPATH=src python3 -m spawnkey doctor
+
 # Listar aplicaciones .desktop disponibles
 PYTHONPATH=src python3 -m spawnkey apps --limit 20
 
@@ -129,8 +144,12 @@ PYTHONPATH=src python3 -m spawnkey profile create \
   --width 80 --height 45 \
   --shortcut "Meta+Shift+T"
 
-# Listar perfiles y estado real de atajos
+# Listar perfiles, inspeccionarlos, editarlos y exportar/importar configuraciones portables
 PYTHONPATH=src python3 -m spawnkey profile list
+PYTHONPATH=src python3 -m spawnkey profile show konsole
+PYTHONPATH=src python3 -m spawnkey profile edit konsole --width 75 --opacity 0.95
+PYTHONPATH=src python3 -m spawnkey profile export konsole --output konsole.json
+PYTHONPATH=src python3 -m spawnkey profile import konsole.json
 PYTHONPATH=src python3 -m spawnkey shortcut list
 
 # Alternar manualmente un perfil (lo mismo que ejecuta su script .sh)

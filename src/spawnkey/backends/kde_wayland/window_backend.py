@@ -7,14 +7,24 @@ import json
 import os
 from pathlib import Path
 import re
-import shlex
+import shutil
 import signal
 import subprocess
 import time
 from typing import Any, Iterator
 import uuid
 
-from spawnkey.backends.base import BackendCapabilities, WindowBackend
+from spawnkey.backends.base import (
+    ENV_MARKER,
+    BackendCapabilities,
+    DiagnosticItem,
+    WindowBackend,
+    build_launch_argv,
+    find_profile_pids,
+    is_pid_alive_for_profile,
+    prepare_launch_argv_and_env,
+    profile_match_tokens,
+)
 from spawnkey.backends.kde_wayland.dbus_utils import (
     kwin_is_effect_loaded,
     kwin_is_script_loaded,
@@ -24,8 +34,10 @@ from spawnkey.backends.kde_wayland.dbus_utils import (
     kwin_reconfigure_effect,
     kwin_stop_and_unload,
     kwin_unload_script,
+    qdbus_call,
     sni_try_activate_tray_app,
 )
+from spawnkey.i18n import _, ngettext
 from spawnkey.backends.kde_wayland.qml_templates import (
     build_kwin_config,
     render_existing_window_probe_js,
@@ -37,54 +49,9 @@ from spawnkey.core.models import DropdownProfile, LifecycleMode, MonitorRect, Ru
 from spawnkey.core.storage import AppPaths, profile_run_guard
 
 
-ENV_MARKER = "SPAWNKEY_PROFILE_ID"
 CORNER_EFFECT_NAME = "spawnkey_corners"
 PENDING_WATCH_CANCEL_WINDOW_S = 2.5
 SNI_WATCH_CANCEL_WINDOW_S = 0.35
-
-
-def find_profile_pids(profile_id: str, proc_root: Path = Path("/proc")) -> list[int]:
-    """Return live process IDs started by SpawnKey for the given profile_id."""
-    expected = f"{ENV_MARKER}={profile_id}".encode("utf-8")
-    pids: list[int] = []
-    if not proc_root.is_dir():
-        return pids
-
-    for entry in proc_root.iterdir():
-        if not entry.name.isdigit():
-            continue
-        pid = int(entry.name)
-        if pid == os.getpid():
-            continue
-        env_path = entry / "environ"
-        try:
-            raw = env_path.read_bytes()
-        except OSError:
-            continue
-        if expected in raw.split(b"\x00"):
-            # Ignore zombie processes
-            try:
-                stat_text = (entry / "stat").read_text(encoding="utf-8", errors="ignore")
-                rparen = stat_text.rfind(")")
-                if rparen != -1 and stat_text[rparen + 2 : rparen + 3] == "Z":
-                    continue
-            except OSError:
-                continue
-            pids.append(pid)
-
-    return sorted(pids)
-
-
-def build_launch_argv(profile: DropdownProfile) -> list[str]:
-    """Split profile exec_cmd and optional extra_args into argv tokens."""
-    cmd = profile.exec_cmd.strip()
-    if profile.extra_args.strip():
-        cmd = f"{cmd} {profile.extra_args.strip()}"
-    argv = shlex.split(cmd)
-    if not argv:
-        raise ValueError(f"Comando vacío para el perfil '{profile.id}'.")
-    argv[0] = os.path.expanduser(argv[0])
-    return argv
 
 
 def parse_kscreen_outputs(raw_output: str) -> tuple[list[MonitorRect], int]:
@@ -148,20 +115,24 @@ class KDEWaylandWindowBackend(WindowBackend):
         self.paths = paths or AppPaths.from_env()
         self.debounce_ms = max(0, int(debounce_ms))
         self._caps_cache: BackendCapabilities | None = None
+        self._corner_radius_hint: str = ""
 
     def _get_capabilities(self) -> BackendCapabilities:
         if self._caps_cache is None:
+            supported = self._detect_corner_radius_support()
             self._caps_cache = BackendCapabilities(
                 supports_opacity=True,
-                supports_corner_radius=self._detect_corner_radius_support(),
+                supports_corner_radius=supported,
                 supports_click_outside=True,
                 supports_animations=True,
+                corner_radius_hint=self._corner_radius_hint,
             )
         return self._caps_cache
 
     def refresh_capabilities(self) -> BackendCapabilities:
         """Re-probe KWin Effects D-Bus for optional corner-radius effect support."""
         self._caps_cache = None
+        self._corner_radius_hint = ""
         return self._get_capabilities()
 
     @staticmethod
@@ -172,6 +143,36 @@ class KDEWaylandWindowBackend(WindowBackend):
             Path("/usr/lib/qt6/plugins/kwin/effects/plugins/spawnkey_corners.so"),
             Path("/usr/lib64/qt6/plugins/kwin/effects/plugins/spawnkey_corners.so"),
         ]
+
+    @staticmethod
+    def _read_effect_plugin_kwin_version(plugin_so: Path) -> str | None:
+        """Extract the KWin ABI version embedded in a compiled KWin effect .so plugin."""
+        try:
+            raw = plugin_so.read_bytes()
+        except OSError:
+            return None
+        match = re.search(rb"org\.kde\.kwin\.EffectPluginFactory(\d+\.\d+\.\d+)", raw)
+        if not match:
+            return None
+        return match.group(1).decode("ascii", errors="ignore") or None
+
+    @staticmethod
+    def _detect_running_kwin_version() -> str | None:
+        """Query the installed/running kwin_wayland version string (e.g. '6.8.3')."""
+        try:
+            proc = subprocess.run(
+                ["kwin_wayland", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=2.0,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if proc.returncode != 0:
+            return None
+        match = re.search(r"\b(\d+\.\d+\.\d+)\b", proc.stdout or "")
+        return match.group(1) if match else None
 
     def _bootstrap_user_effect_plugin_path(self, plugin_so: Path) -> None:
         """Register ~/.local/lib/qt6/plugins inside a running kwin_wayland session via QML."""
@@ -199,11 +200,20 @@ class KDEWaylandWindowBackend(WindowBackend):
 
     def _detect_corner_radius_support(self) -> bool:
         """Check if spawnkey_corners KWin effect is loaded (or loadable if installed)."""
+        self._corner_radius_hint = ""
         try:
             if kwin_is_effect_loaded(CORNER_EFFECT_NAME):
                 return True
             installed_so = next((p for p in self._candidate_effect_plugin_paths() if p.is_file()), None)
             if installed_so is None:
+                return False
+            plugin_ver = self._read_effect_plugin_kwin_version(installed_so)
+            kwin_ver = self._detect_running_kwin_version() if plugin_ver else None
+            if plugin_ver and kwin_ver and plugin_ver != kwin_ver:
+                self._corner_radius_hint = (
+                    f"Efecto compilado para KWin {plugin_ver} (actual: {kwin_ver}); "
+                    "recompila con ./INSTALL.sh --kwin-effect"
+                )
                 return False
             if kwin_load_effect(CORNER_EFFECT_NAME) and kwin_is_effect_loaded(CORNER_EFFECT_NAME):
                 return True
@@ -525,6 +535,7 @@ class KDEWaylandWindowBackend(WindowBackend):
         allow_dismiss: bool,
         saved_original: dict[str, Any] | None = None,
         has_active_watcher: bool = True,
+        allow_relocate: bool = True,
     ) -> str:
         """Probe KWin for a tray app's current window state.
 
@@ -548,6 +559,8 @@ class KDEWaylandWindowBackend(WindowBackend):
             saved_original=saved_original,
             has_active_watcher=has_active_watcher,
         )
+        if not allow_relocate:
+            cfg["relocateOnToggle"] = False
         probe_js = self._write_unique_js(
             f"probe_{profile.id}",
             render_tray_probe_and_dismiss_js(
@@ -666,24 +679,7 @@ class KDEWaylandWindowBackend(WindowBackend):
 
     @staticmethod
     def _profile_sni_tokens(profile: DropdownProfile) -> list[str]:
-        tokens: list[str] = []
-        if profile.match_hint and profile.match_hint.strip():
-            tokens.append(profile.match_hint.strip().lower())
-        if profile.desktop_id and profile.desktop_id.strip():
-            desk = profile.desktop_id.strip().lower()
-            if desk.endswith(".desktop"):
-                desk = desk[:-8]
-            if desk and desk not in tokens:
-                tokens.append(desk)
-        try:
-            argv = build_launch_argv(profile)
-            if argv:
-                exe_base = Path(argv[0]).name.strip().lower()
-                if exe_base and exe_base not in tokens:
-                    tokens.append(exe_base)
-        except ValueError:
-            pass
-        return tokens
+        return profile_match_tokens(profile)
 
     def _activate_or_launch_tray_app(self, profile: DropdownProfile) -> tuple[int, bool]:
         """Try instant StatusNotifierItem D-Bus activation (~2ms), else cold-launch binary."""
@@ -693,11 +689,7 @@ class KDEWaylandWindowBackend(WindowBackend):
         return self._launch_app(profile), False
 
     def _launch_app(self, profile: DropdownProfile) -> int:
-        argv = build_launch_argv(profile)
-        env = dict(os.environ)
-        env[ENV_MARKER] = profile.id
-        # Strip GTK CSD where supported if user launches a GTK app as dropdown
-        env.setdefault("GTK_CSD", "0")
+        argv, env = prepare_launch_argv_and_env(profile)
         proc = subprocess.Popen(
             argv,
             env=env,
@@ -707,6 +699,129 @@ class KDEWaylandWindowBackend(WindowBackend):
             start_new_session=True,
         )
         return proc.pid
+
+    def diagnose(self) -> list[DiagnosticItem]:
+        """Verify KWin D-Bus scripting/effects, spawnkey_corners, and kscreen-doctor."""
+        items: list[DiagnosticItem] = []
+
+        try:
+            qdbus_call(
+                "org.kde.KWin",
+                "/Scripting",
+                "org.kde.kwin.Scripting.isScriptLoaded",
+                "spawnkey_diag_probe",
+                check=True,
+            )
+            items.append(
+                (
+                    "ok",
+                    "KWin D-Bus (/Scripting)",
+                    _("Service org.kde.KWin /Scripting is reachable."),
+                )
+            )
+        except Exception as exc:
+            items.append(
+                (
+                    "error",
+                    "KWin D-Bus (/Scripting)",
+                    _("Not reachable: {error}").format(error=exc),
+                )
+            )
+
+        try:
+            qdbus_call(
+                "org.kde.KWin",
+                "/Effects",
+                "org.kde.kwin.Effects.isEffectLoaded",
+                CORNER_EFFECT_NAME,
+                check=True,
+            )
+            caps = self.refresh_capabilities()
+            if caps.supports_corner_radius:
+                items.append(
+                    (
+                        "ok",
+                        _("spawnkey_corners effect"),
+                        _("Loaded and active in KWin."),
+                    )
+                )
+            elif self._corner_radius_hint:
+                items.append(("warn", _("spawnkey_corners effect"), self._corner_radius_hint))
+            else:
+                items.append(
+                    (
+                        "warn",
+                        _("spawnkey_corners effect"),
+                        _("Not installed or not loaded (optional: rounded corners disabled)."),
+                    )
+                )
+        except Exception as exc:
+            items.append(
+                (
+                    "warn",
+                    "KWin D-Bus (/Effects)",
+                    _("Not reachable: {error}").format(error=exc),
+                )
+            )
+
+        kscreen_bin = shutil.which("kscreen-doctor")
+        if not kscreen_bin:
+            items.append(
+                (
+                    "warn",
+                    "kscreen-doctor",
+                    _("Not found in PATH; fallback resolution 1920x1080 will be used."),
+                )
+            )
+        else:
+            try:
+                proc = subprocess.run(
+                    [kscreen_bin, "-o"],
+                    capture_output=True,
+                    text=True,
+                    timeout=3.0,
+                    check=False,
+                )
+                if proc.returncode == 0:
+                    monitors, _primary_idx = parse_kscreen_outputs(proc.stdout)
+                    if monitors:
+                        items.append(
+                            (
+                                "ok",
+                                "kscreen-doctor",
+                                ngettext(
+                                    "{count} active display detected.",
+                                    "{count} active displays detected.",
+                                    len(monitors),
+                                ).format(count=len(monitors)),
+                            )
+                        )
+                    else:
+                        items.append(
+                            (
+                                "warn",
+                                "kscreen-doctor",
+                                _("Executed with no active displays detected."),
+                            )
+                        )
+                else:
+                    items.append(
+                        (
+                            "warn",
+                            "kscreen-doctor",
+                            _("Exited with code {code}.").format(code=proc.returncode),
+                        )
+                    )
+            except (OSError, subprocess.SubprocessError) as exc:
+                items.append(
+                    (
+                        "warn",
+                        "kscreen-doctor",
+                        _("Execution error: {error}").format(error=exc),
+                    )
+                )
+
+        return items
 
     def get_active_monitor(self, profile: DropdownProfile) -> MonitorRect:
         """Query monitor geometry honoring profile.monitor_policy."""
@@ -754,10 +869,20 @@ class KDEWaylandWindowBackend(WindowBackend):
             if probe_state == "dismissed":
                 # Keep corner_radius rule alive during exit animation; spawnkey_corners clears
                 # radius automatically when noBorder is restored or windowClosed fires.
-                self.clear_orig_state(profile.id)
                 if not has_watcher:
+                    self.clear_orig_state(profile.id)
                     self._clear_kwin_handle(profile.id)
                 else:
+                    has_real_orig = bool(
+                        orig_state
+                        and (
+                            int(orig_state.get("width", 0) or 0) > 50
+                            or int(orig_state.get("maximizeMode", 0) or 0) != 0
+                            or bool(orig_state.get("fullScreen", False))
+                        )
+                    )
+                    if not has_real_orig:
+                        self.clear_orig_state(profile.id)
                     self._mark_kwin_handle_action(profile.id, "dismissed")
                 return RuntimeState(profile_id=profile.id, pid=None, visible=False)
 
@@ -803,7 +928,7 @@ class KDEWaylandWindowBackend(WindowBackend):
         live_pids = find_profile_pids(profile.id)
 
         # Also check previously recorded PID in case process forked/cleared env
-        if state.pid and state.pid not in live_pids and Path(f"/proc/{state.pid}").exists():
+        if state.pid and state.pid not in live_pids and is_pid_alive_for_profile(state.pid, profile):
             live_pids.append(state.pid)
 
         # If user pressed the shortcut again while a newly launched app hasn't mapped its window yet,
@@ -901,6 +1026,7 @@ class KDEWaylandWindowBackend(WindowBackend):
                     allow_dismiss=True,
                     saved_original=orig_state,
                     has_active_watcher=has_watcher,
+                    allow_relocate=False,
                 )
             else:
                 self._stop_previous_kwin_script(profile.id)
@@ -908,7 +1034,7 @@ class KDEWaylandWindowBackend(WindowBackend):
             return RuntimeState(profile_id=profile.id, pid=None, visible=False)
 
         live_pids = find_profile_pids(profile.id)
-        if state.pid and state.pid not in live_pids and Path(f"/proc/{state.pid}").exists():
+        if state.pid and state.pid not in live_pids and is_pid_alive_for_profile(state.pid, profile):
             live_pids.append(state.pid)
 
         fallback_found = False

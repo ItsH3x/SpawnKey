@@ -155,3 +155,43 @@ def compute_animation_duration_ms(profile: DropdownProfile) -> int:
     if profile.animation_type is AnimationType.NONE:
         return 0
     return max(30, round(BASE_ANIMATION_DURATION_MS * profile.animation_scale))
+
+
+def is_rect_on_monitor(
+    monitor: MonitorRect,
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+) -> bool:
+    """Return True iff the rectangle's center falls inside the given monitor."""
+    cx = x + width // 2
+    cy = y + height // 2
+    return (
+        monitor.x <= cx < (monitor.x + monitor.width)
+        and monitor.y <= cy < (monitor.y + monitor.height)
+    )
+
+
+def should_relocate_dropdown(
+    profile: DropdownProfile,
+    target_monitor: MonitorRect,
+    *,
+    win_rect: tuple[int, int, int, int] | None = None,
+    is_focused: bool | None = None,
+) -> bool:
+    """Return True when toggling an existing dropdown should move it to target_monitor."""
+    if not getattr(profile, "relocate_on_toggle", True):
+        return False
+    if profile.monitor_policy not in (MonitorPolicy.CURSOR, MonitorPolicy.FOCUSED):
+        return False
+    if (
+        win_rect is not None
+        and win_rect[2] > 1
+        and win_rect[3] > 1
+        and not is_rect_on_monitor(target_monitor, *win_rect)
+    ):
+        return True
+    if is_focused is False:
+        return True
+    return False

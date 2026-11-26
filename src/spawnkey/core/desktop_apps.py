@@ -9,6 +9,8 @@ from pathlib import Path
 import shlex
 import shutil
 
+from spawnkey.i18n import _
+
 
 # Freedesktop Exec field codes removed when launching standalone apps.
 _FIELD_CODES = {"%f", "%F", "%u", "%U", "%d", "%D", "%n", "%N", "%i", "%c", "%k", "%v", "%m"}
@@ -56,7 +58,7 @@ def clean_exec_command(raw_exec: str) -> str:
 def _preferred_locale_keys(base_key: str) -> list[str]:
     lang = os.environ.get("LC_MESSAGES") or os.environ.get("LANG") or ""
     if not lang:
-        loc, _ = locale.getlocale()
+        loc, _enc = locale.getlocale()
         lang = loc or ""
     lang = lang.split(".")[0].split("@")[0]
     keys: list[str] = []
@@ -225,28 +227,28 @@ def discover_desktop_apps(
 def validate_executable_command(command: str) -> tuple[bool, str]:
     """Validate that a user-provided executable path or command can be invoked."""
     if not command or not command.strip():
-        return False, "El comando está vacío."
+        return False, _("Command is empty.")
     try:
         tokens = shlex.split(command)
     except ValueError as exc:
-        return False, f"Sintaxis inválida en el comando: {exc}"
+        return False, _("Invalid command syntax: {error}").format(error=exc)
     if not tokens:
-        return False, "El comando está vacío."
+        return False, _("Command is empty.")
 
     binary = os.path.expanduser(tokens[0])
     if "/" in binary:
         candidate = Path(binary)
         if not candidate.exists():
-            return False, f"No existe el archivo: {candidate}"
+            return False, _("File does not exist: {path}").format(path=candidate)
         if not candidate.is_file():
-            return False, f"La ruta no es un archivo ejecutable: {candidate}"
+            return False, _("Path is not an executable file: {path}").format(path=candidate)
         if not os.access(candidate, os.X_OK):
-            return False, f"El archivo no tiene permiso de ejecución: {candidate}"
+            return False, _("File lacks execute permission: {path}").format(path=candidate)
         return True, str(candidate)
 
     resolved = shutil.which(binary)
     if not resolved:
-        return False, f"No se encontró el ejecutable '{binary}' en PATH."
+        return False, _("Executable '{binary}' not found in PATH.").format(binary=binary)
     return True, resolved
 
 
@@ -264,6 +266,11 @@ _FALLBACK_TERMINALS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("mate-terminal", ("-e",)),
     ("urxvt", ("-e",)),
     ("xterm", ("-e",)),
+    ("ptyxis", ("--",)),
+    ("kgx", ("--",)),
+    ("ghostty", ("-e",)),
+    ("terminator", ("-x",)),
+    ("sakura", ("-e",)),
 )
 
 _TERMINAL_EXEC_FLAGS: dict[str, tuple[str, ...]] = {

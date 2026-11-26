@@ -38,6 +38,7 @@ def build_kwin_config(
         "customX": profile.custom_x,
         "customY": profile.custom_y,
         "monitorPolicy": profile.monitor_policy.value,
+        "relocateOnToggle": bool(getattr(profile, "relocate_on_toggle", True)),
         "borderless": True,
         "hideOnClickOutside": profile.hide_on_click_outside,
         "showInTaskbar": profile.show_in_taskbar,
@@ -76,6 +77,11 @@ Item {{
     property bool everActivated: false
     property bool animating: false
     property bool shuttingDown: false
+    property bool watchingExternalOpen: false
+    property bool restoringExternalOpen: false
+    property var externalRestoreWin: null
+    property int extRestoreElapsed: 0
+    property int extRestoreStableTicks: 0
     property real pendingOriginalOpacity: 1.0
 
     // Geometry confirmation & post-show enforcement state
@@ -147,7 +153,7 @@ Item {{
             var parts = normHint.split(".");
             for (var p = parts.length - 1; p >= 0; p--) {{
                 var seg = parts[p];
-                if (seg.length < 4 || seg === "desktop" || seg === "client" || seg === "linux" || seg === "github") continue;
+                if (seg.length < 4 || seg === "desktop" || seg === "client" || seg === "linux" || seg === "github" || seg === "com" || seg === "org" || seg === "net" || seg === "io" || seg === "app") continue;
                 if (normCand === seg || normCand.indexOf(seg) !== -1) return true;
                 var segDash = seg.indexOf("-");
                 if (segDash >= 4) {{
@@ -244,6 +250,21 @@ Item {{
             area = screen.geometry;
         }}
         return area;
+    }}
+
+    function isWindowOnArea(w, area) {{
+        if (!w || !w.frameGeometry || !area) return true;
+        var fg = w.frameGeometry;
+        var cx = fg.x + fg.width / 2.0;
+        var cy = fg.y + fg.height / 2.0;
+        return cx >= area.x && cx < (area.x + area.width) && cy >= area.y && cy < (area.y + area.height);
+    }}
+
+    function shouldRelocateOrFocus(w) {{
+        if (!w) return false;
+        if (cfg.relocateOnToggle === false) return false;
+        if (cfg.monitorPolicy !== "cursor" && cfg.monitorPolicy !== "focused") return false;
+        return !isWindowOnArea(w, getMonitorArea()) || !w.active;
     }}
 
     function clampDim(val, limit) {{
@@ -401,8 +422,13 @@ Item {{
 
     function captureOriginalState(w) {{
         if (!w) return;
+        if (w.noBorder) return;
         // If we already captured a valid non-dropdown geometry earlier, preserve it.
-        if (savedOriginal && savedOriginal.width > 50 && savedOriginal.height > 50) {{
+        if (savedOriginal && (
+            savedOriginal.fullScreen
+            || (savedOriginal.maximizeMode && savedOriginal.maximizeMode !== 0)
+            || (savedOriginal.width > 50 && savedOriginal.height > 50)
+        )) {{
             savedOriginal.noBorder = false;
             return;
         }}
@@ -428,16 +454,16 @@ Item {{
         }};
     }}
 
-    function restoreOriginalState(w) {{
+    function restoreOriginalState(w, forceGeometry) {{
         if (!w || !savedOriginal) return;
-        w.noBorder = savedOriginal.noBorder;
-        w.keepBelow = savedOriginal.keepBelow;
-        w.keepAbove = savedOriginal.keepAbove;
-        w.skipTaskbar = savedOriginal.skipTaskbar;
-        w.skipPager = savedOriginal.skipPager;
-        w.skipSwitcher = savedOriginal.skipSwitcher;
-        w.onAllDesktops = savedOriginal.onAllDesktops;
-        if (savedOriginal.restoreGeometry) {{
+        w.noBorder = false;
+        w.keepBelow = Boolean(savedOriginal.keepBelow);
+        w.keepAbove = Boolean(savedOriginal.keepAbove);
+        w.skipTaskbar = Boolean(savedOriginal.skipTaskbar);
+        w.skipPager = Boolean(savedOriginal.skipPager);
+        w.skipSwitcher = Boolean(savedOriginal.skipSwitcher);
+        w.onAllDesktops = Boolean(savedOriginal.onAllDesktops);
+        if (forceGeometry || savedOriginal.restoreGeometry) {{
             if (savedOriginal.fullScreen) {{
                 w.fullScreen = true;
                 return;
@@ -453,6 +479,28 @@ Item {{
                 setGeometry(w, savedOriginal);
             }}
         }}
+    }}
+
+    function isExternalRestoreSettled(w) {{
+        if (!w) return true;
+        if (w.noBorder) return false;
+        if (!savedOriginal) return true;
+        if (savedOriginal.fullScreen) {{
+            return Boolean(w.fullScreen);
+        }}
+        if (savedOriginal.maximizeMode && savedOriginal.maximizeMode !== 0) {{
+            return typeof w.maximizeMode === "number" && w.maximizeMode === savedOriginal.maximizeMode;
+        }}
+        if (savedOriginal.width > 50 && savedOriginal.height > 50) {{
+            if (isMaximizedOrFullscreen(w)) return false;
+            var fg = w.frameGeometry;
+            if (!fg) return false;
+            return Math.abs(fg.x - savedOriginal.x) <= 4
+                && Math.abs(fg.y - savedOriginal.y) <= 4
+                && Math.abs(fg.width - savedOriginal.width) <= 4
+                && Math.abs(fg.height - savedOriginal.height) <= 4;
+        }}
+        return true;
     }}
 
     function scheduleUnload() {{
@@ -859,6 +907,40 @@ Item {{
     }}
 
     Timer {{
+        id: externalRestoreTimer
+        interval: 15
+        repeat: true
+        running: false
+        onTriggered: {{
+            if (!restoringExternalOpen || !externalRestoreWin) {{
+                externalRestoreTimer.stop();
+                restoringExternalOpen = false;
+                externalRestoreWin = null;
+                return;
+            }}
+            extRestoreElapsed += interval;
+            if (isExternalRestoreSettled(externalRestoreWin)) {{
+                extRestoreStableTicks += 1;
+            }} else {{
+                restoreOriginalState(externalRestoreWin, true);
+                extRestoreStableTicks = 0;
+            }}
+            if (extRestoreStableTicks >= 2 || extRestoreElapsed >= 150) {{
+                externalRestoreTimer.stop();
+                restoreOriginalState(externalRestoreWin, true);
+                externalRestoreWin.skipsCloseAnimation = Boolean(savedOriginal && savedOriginal.skipsCloseAnimation);
+                externalRestoreWin.opacity = (savedOriginal && typeof savedOriginal.opacity === "number" && savedOriginal.opacity > 0.0)
+                    ? savedOriginal.opacity
+                    : 1.0;
+                focusWindow(externalRestoreWin);
+                restoringExternalOpen = false;
+                externalRestoreWin = null;
+                scheduleUnload();
+            }}
+        }}
+    }}
+
+    Timer {{
         id: watchTimeoutTimer
         interval: (typeof cfg.startupTimeoutMs === "number" && cfg.startupTimeoutMs >= 1000) ? cfg.startupTimeoutMs : 8000
         repeat: false
@@ -971,6 +1053,21 @@ Item {{
         target: Workspace
 
         function onWindowAdded(w) {{
+            if (watchingExternalOpen && !restoringExternalOpen) {{
+                if (isNormalAppWindow(w) && !w.transientFor && hintMatches(w)) {{
+                    watchingExternalOpen = false;
+                    restoringExternalOpen = true;
+                    externalRestoreWin = w;
+                    extRestoreElapsed = 0;
+                    extRestoreStableTicks = 0;
+                    w.opacity = 0.0;
+                    w.skipsCloseAnimation = true;
+                    restoreOriginalState(w, true);
+                    externalRestoreTimer.restart();
+                }}
+                return;
+            }}
+            if (restoringExternalOpen) return;
             if ((cfg.action !== "watch_new" && cfg.action !== "cancel_pending") || trackedWin || shuttingDown) return;
             if (!isNormalAppWindow(w)) return;
             if (w.transientFor) return;
@@ -1016,9 +1113,17 @@ Item {{
         }}
 
         function onWindowRemoved(w) {{
+            if (externalRestoreWin && isSameWindow(w, externalRestoreWin)) {{
+                externalRestoreTimer.stop();
+                restoringExternalOpen = false;
+                externalRestoreWin = null;
+                scheduleUnload();
+                return;
+            }}
             if (trackedWin && isSameWindow(w, trackedWin)) {{
-                if (cfg.mode === "tray" && !shuttingDown) {{
-                    restoreOriginalState(trackedWin);
+                var wasShuttingDown = shuttingDown;
+                if (cfg.mode === "tray" && !wasShuttingDown) {{
+                    restoreOriginalState(trackedWin, false);
                 }}
                 animTimer.stop();
                 geoConfirmTimer.stop();
@@ -1026,9 +1131,18 @@ Item {{
                 postShowCheckTimer.stop();
                 trayCloseTimer.stop();
                 trayPostCloseTimer.stop();
+                focusArmTimer.stop();
+                settleNewWindowTimer.stop();
+                watchTimeoutTimer.stop();
+                externalRestoreTimer.stop();
                 trackedWin = null;
                 focusArmed = false;
-                scheduleUnload();
+                if (cfg.mode === "tray" && wasShuttingDown && cfg.action !== "cancel_pending") {{
+                    shuttingDown = false;
+                    watchingExternalOpen = true;
+                }} else {{
+                    scheduleUnload();
+                }}
             }}
         }}
     }}
@@ -1042,7 +1156,7 @@ Item {{
         if (cfg.action === "toggle_existing") {{
             var existing = findExistingWindow();
             if (existing) {{
-                if (existing.minimized) {{
+                if (existing.minimized || shouldRelocateOrFocus(existing)) {{
                     showWindow(existing, false);
                 }} else {{
                     hideOrCloseWindow(existing);
@@ -1171,6 +1285,36 @@ function restoreOrphanDropdown(w) {{
     }}
 }}
 
+function getTargetScreen() {{
+    var screen = null;
+    if (cfg.monitorPolicy === "cursor") {{
+        screen = workspace.screenAt ? workspace.screenAt(workspace.cursorPos) : workspace.activeScreen;
+    }} else if (cfg.monitorPolicy === "primary") {{
+        var screens = workspace.screens;
+        if (screens && screens.length > 0) screen = screens[0];
+    }} else if (cfg.monitorPolicy === "focused") {{
+        if (workspace.activeWindow && workspace.activeWindow.output) {{
+            screen = workspace.activeWindow.output;
+        }} else {{
+            screen = workspace.activeScreen;
+        }}
+    }}
+    if (!screen) {{
+        screen = workspace.activeScreen;
+    }}
+    return screen;
+}}
+
+function isWindowOnScreen(w, screen) {{
+    if (!w || !w.frameGeometry || !screen || !screen.geometry) return true;
+    var fg = w.frameGeometry;
+    var sg = screen.geometry;
+    var cx = fg.x + fg.width / 2.0;
+    var cy = fg.y + fg.height / 2.0;
+    return cx >= sg.x && cx < (sg.x + sg.width) && cy >= sg.y && cy < (sg.y + sg.height);
+}}
+
+var targetScreen = getTargetScreen();
 var wins = workspace.windowList ? workspace.windowList() : (workspace.stackingOrder || []);
 var foundNormal = false;
 for (var i = wins.length - 1; i >= 0; i--) {{
@@ -1184,13 +1328,20 @@ for (var i = wins.length - 1; i >= 0; i--) {{
     );
     if (isDropdown) {{
         if (flagName) {{
-            if (cfg.hasActiveWatcher === false) {{
-                restoreOrphanDropdown(w);
+            var shouldRelocate = cfg.relocateOnToggle !== false
+                && (cfg.monitorPolicy === "cursor" || cfg.monitorPolicy === "focused")
+                && (!isWindowOnScreen(w, targetScreen) || !w.active);
+            if (shouldRelocate) {{
+                foundNormal = true;
             }} else {{
-                w.keepBelow = true;
+                if (cfg.hasActiveWatcher === false) {{
+                    restoreOrphanDropdown(w);
+                }} else {{
+                    w.keepBelow = true;
+                }}
+                callDBus("org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting", "unloadScript", flagName);
+                foundNormal = false;
             }}
-            callDBus("org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting", "unloadScript", flagName);
-            foundNormal = false;
         }} else {{
             foundNormal = true;
         }}
@@ -1227,13 +1378,28 @@ function normalizeText(v) {{
 
 function tokenMatches(candidate, hint) {{
     if (!candidate || !hint) return false;
-    if (candidate === hint) return true;
-    if (candidate.indexOf(hint) !== -1) return true;
-    if (candidate.length >= 3 && hint.indexOf(candidate) !== -1) return true;
-    var dashIdx = hint.indexOf("-");
+    var normCand = String(candidate).toLowerCase().replace(/_/g, "-");
+    var normHint = String(hint).toLowerCase().replace(/_/g, "-");
+    if (normCand === normHint) return true;
+    if (normCand.indexOf(normHint) !== -1) return true;
+    if (normCand.length >= 3 && normHint.indexOf(normCand) !== -1) return true;
+    var dashIdx = normHint.indexOf("-");
     if (dashIdx >= 4) {{
-        var stem = hint.slice(0, dashIdx);
-        if (candidate === stem || candidate.indexOf(stem) !== -1) return true;
+        var stem = normHint.slice(0, dashIdx);
+        if (normCand === stem || normCand.indexOf(stem) !== -1) return true;
+    }}
+    if (normHint.indexOf(".") !== -1) {{
+        var parts = normHint.split(".");
+        for (var p = parts.length - 1; p >= 0; p--) {{
+            var seg = parts[p];
+            if (seg.length < 4 || seg === "desktop" || seg === "client" || seg === "linux" || seg === "github" || seg === "com" || seg === "org" || seg === "net" || seg === "io" || seg === "app") continue;
+            if (normCand === seg || normCand.indexOf(seg) !== -1) return true;
+            var segDash = seg.indexOf("-");
+            if (segDash >= 4) {{
+                var segStem = seg.slice(0, segDash);
+                if (normCand === segStem || normCand.indexOf(segStem) !== -1) return true;
+            }}
+        }}
     }}
     return false;
 }}

@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+from typing import Any
 
 from spawnkey.backends.base import (
     BackendError,
@@ -29,6 +30,12 @@ MEDIA_KEYS_SCHEMA = "org.gnome.settings-daemon.plugins.media-keys"
 MEDIA_KEYS_LIST_KEY = "custom-keybindings"
 CUSTOM_BINDING_SCHEMA = "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding"
 CUSTOM_BINDING_BASE_PATH = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings"
+
+SYSTEM_KEYBINDING_SCHEMAS: tuple[str, ...] = (
+    "org.gnome.desktop.wm.keybindings",
+    "org.gnome.shell.keybindings",
+    "org.gnome.mutter.keybindings",
+)
 
 _GNOME_MODIFIER_MAP: dict[str, str] = {
     "Meta": "<Super>",
@@ -65,6 +72,14 @@ _GNOME_KEY_MAP: dict[str, str] = {
     "PgUp": "Page_Up",
     "PgDown": "Page_Down",
     "Space": "space",
+    "Print": "Print",
+    "Pause": "Pause",
+    "Menu": "Menu",
+    "KP_Add": "KP_Add",
+    "KP_Subtract": "KP_Subtract",
+    "KP_Multiply": "KP_Multiply",
+    "KP_Divide": "KP_Divide",
+    "KP_Decimal": "KP_Decimal",
     "`": "grave",
     "-": "minus",
     "=": "equal",
@@ -78,6 +93,12 @@ _GNOME_KEY_MAP: dict[str, str] = {
     "[": "bracketleft",
     "]": "bracketright",
 }
+
+for _kp_digit in range(10):
+    _GNOME_KEY_MAP[f"KP_{_kp_digit}"] = f"KP_{_kp_digit}"
+
+for _fn_num in range(1, 25):
+    _GNOME_KEY_MAP[f"F{_fn_num}"] = f"F{_fn_num}"
 
 _GNOME_REVERSE_KEY_MAP: dict[str, str] = {v.lower(): k for k, v in _GNOME_KEY_MAP.items()}
 
@@ -207,6 +228,36 @@ class GnomeWaylandShortcutBackend(ShortcutBackend):
     def desktop_file_path(self, component_id: str) -> Path:
         return self.applications_dir / component_id
 
+    def _is_run_gsettings_patched(self) -> bool:
+        if "_run_gsettings" in self.__dict__:
+            return True
+        return type(self)._run_gsettings is not GnomeWaylandShortcutBackend._run_gsettings
+
+    def _get_gio(self) -> Any | None:
+        """Lazily import Gio when gsettings is enabled and not mocked out."""
+        if not self.use_gsettings or self._is_run_gsettings_patched():
+            return None
+        if not shutil.which("gsettings"):
+            return None
+        try:
+            from gi.repository import Gio  # type: ignore[import-not-found]
+
+            source = Gio.SettingsSchemaSource.get_default()
+            if source is None or source.lookup(MEDIA_KEYS_SCHEMA, True) is None:
+                return None
+            return Gio
+        except Exception:
+            return None
+
+    @staticmethod
+    def _gio_open(gio: Any, schema_id: str, path: str | None = None) -> Any | None:
+        source = gio.SettingsSchemaSource.get_default()
+        if source is None or source.lookup(schema_id, True) is None:
+            return None
+        if path:
+            return gio.Settings.new_with_path(schema_id, path)
+        return gio.Settings.new(schema_id)
+
     def _run_gsettings(self, args: list[str], *, check: bool = True) -> str:
         gsettings = shutil.which("gsettings")
         if not gsettings:
@@ -222,6 +273,60 @@ class GnomeWaylandShortcutBackend(ShortcutBackend):
             err = (proc.stderr or proc.stdout).strip()
             raise BackendError(f"Error de gsettings ({' '.join(args)}): {err}")
         return proc.stdout.strip()
+
+    def _gsettings_get_strv(self, schema_id: str, key: str, *, check: bool = True) -> list[str]:
+        gio = self._get_gio()
+        if gio is not None:
+            settings = self._gio_open(gio, schema_id)
+            if settings is not None:
+                return [str(x) for x in settings.get_strv(key) if x]
+        raw = self._run_gsettings(["get", schema_id, key], check=check)
+        return parse_gsettings_strv(raw)
+
+    def _gsettings_set_strv(self, schema_id: str, key: str, values: list[str], *, check: bool = True) -> None:
+        gio = self._get_gio()
+        if gio is not None:
+            settings = self._gio_open(gio, schema_id)
+            if settings is not None:
+                settings.set_strv(key, values)
+                gio.Settings.sync()
+                return
+        self._run_gsettings(["set", schema_id, key, format_gsettings_strv(values)], check=check)
+
+    def _gsettings_get_custom(self, dconf_path: str, key: str) -> str:
+        gio = self._get_gio()
+        if gio is not None:
+            settings = self._gio_open(gio, CUSTOM_BINDING_SCHEMA, dconf_path)
+            if settings is not None:
+                return str(settings.get_string(key))
+        item_schema = f"{CUSTOM_BINDING_SCHEMA}:{dconf_path}"
+        return self._run_gsettings(["get", item_schema, key], check=False).strip("'\"")
+
+    def _gsettings_set_custom(self, dconf_path: str, values: dict[str, str]) -> None:
+        gio = self._get_gio()
+        if gio is not None:
+            settings = self._gio_open(gio, CUSTOM_BINDING_SCHEMA, dconf_path)
+            if settings is not None:
+                for key, val in values.items():
+                    settings.set_string(key, val)
+                gio.Settings.sync()
+                return
+        item_schema = f"{CUSTOM_BINDING_SCHEMA}:{dconf_path}"
+        for key, val in values.items():
+            self._run_gsettings(["set", item_schema, key, val])
+
+    def _gsettings_reset_custom(self, dconf_path: str, keys: tuple[str, ...]) -> None:
+        gio = self._get_gio()
+        if gio is not None:
+            settings = self._gio_open(gio, CUSTOM_BINDING_SCHEMA, dconf_path)
+            if settings is not None:
+                for key in keys:
+                    settings.reset(key)
+                gio.Settings.sync()
+                return
+        item_schema = f"{CUSTOM_BINDING_SCHEMA}:{dconf_path}"
+        for key in keys:
+            self._run_gsettings(["reset", item_schema, key], check=False)
 
     def _load_file_store(self) -> dict[str, dict[str, str]]:
         if not self.store_path.exists():
@@ -281,17 +386,18 @@ class GnomeWaylandShortcutBackend(ShortcutBackend):
         self._write_desktop_entry(profile, component, xdg_trigger)
 
         if self.use_gsettings:
-            raw_list = self._run_gsettings(["get", MEDIA_KEYS_SCHEMA, MEDIA_KEYS_LIST_KEY])
-            current_paths = parse_gsettings_strv(raw_list)
+            current_paths = self._gsettings_get_strv(MEDIA_KEYS_SCHEMA, MEDIA_KEYS_LIST_KEY)
             if dconf_path not in current_paths:
                 current_paths.append(dconf_path)
-                self._run_gsettings(
-                    ["set", MEDIA_KEYS_SCHEMA, MEDIA_KEYS_LIST_KEY, format_gsettings_strv(current_paths)]
-                )
-            item_schema = f"{CUSTOM_BINDING_SCHEMA}:{dconf_path}"
-            self._run_gsettings(["set", item_schema, "name", f"SpawnKey: {profile.name}"])
-            self._run_gsettings(["set", item_schema, "command", profile.script_path])
-            self._run_gsettings(["set", item_schema, "binding", accel])
+                self._gsettings_set_strv(MEDIA_KEYS_SCHEMA, MEDIA_KEYS_LIST_KEY, current_paths)
+            self._gsettings_set_custom(
+                dconf_path,
+                {
+                    "name": f"SpawnKey: {profile.name}",
+                    "command": profile.script_path,
+                    "binding": accel,
+                },
+            )
 
         bindings = self._load_file_store()
         bindings[component] = {
@@ -320,20 +426,16 @@ class GnomeWaylandShortcutBackend(ShortcutBackend):
         removed_any = False
 
         if self.use_gsettings and shutil.which("gsettings"):
-            raw_list = self._run_gsettings(
-                ["get", MEDIA_KEYS_SCHEMA, MEDIA_KEYS_LIST_KEY], check=False
+            current_paths = self._gsettings_get_strv(
+                MEDIA_KEYS_SCHEMA, MEDIA_KEYS_LIST_KEY, check=False
             )
-            current_paths = parse_gsettings_strv(raw_list)
             if dconf_path in current_paths:
                 updated = [p for p in current_paths if p != dconf_path]
-                self._run_gsettings(
-                    ["set", MEDIA_KEYS_SCHEMA, MEDIA_KEYS_LIST_KEY, format_gsettings_strv(updated)],
-                    check=False,
+                self._gsettings_set_strv(
+                    MEDIA_KEYS_SCHEMA, MEDIA_KEYS_LIST_KEY, updated, check=False
                 )
                 removed_any = True
-            item_schema = f"{CUSTOM_BINDING_SCHEMA}:{dconf_path}"
-            for key in ("name", "command", "binding"):
-                self._run_gsettings(["reset", item_schema, key], check=False)
+            self._gsettings_reset_custom(dconf_path, ("name", "command", "binding"))
 
         desktop_file = self.desktop_file_path(component_id)
         if desktop_file.exists():
@@ -368,14 +470,13 @@ class GnomeWaylandShortcutBackend(ShortcutBackend):
         dconf_path = self.dconf_path_for_component(component)
 
         if self.use_gsettings and shutil.which("gsettings"):
-            raw_list = self._run_gsettings(
-                ["get", MEDIA_KEYS_SCHEMA, MEDIA_KEYS_LIST_KEY], check=False
+            current_paths = self._gsettings_get_strv(
+                MEDIA_KEYS_SCHEMA, MEDIA_KEYS_LIST_KEY, check=False
             )
-            if dconf_path not in parse_gsettings_strv(raw_list):
+            if dconf_path not in current_paths:
                 return ShortcutRegistrationStatus.OUT_OF_SYNC
-            item_schema = f"{CUSTOM_BINDING_SCHEMA}:{dconf_path}"
-            raw_binding = self._run_gsettings(["get", item_schema, "binding"], check=False).strip("'\"")
-            raw_cmd = self._run_gsettings(["get", item_schema, "command"], check=False).strip("'\"")
+            raw_binding = self._gsettings_get_custom(dconf_path, "binding")
+            raw_cmd = self._gsettings_get_custom(dconf_path, "command")
             try:
                 if gnome_accel_to_canonical(raw_binding) != expected.canonical:
                     return ShortcutRegistrationStatus.OUT_OF_SYNC
@@ -404,11 +505,147 @@ class GnomeWaylandShortcutBackend(ShortcutBackend):
             if comp.startswith("spawnkey-"):
                 found.add(comp)
         if self.use_gsettings and shutil.which("gsettings"):
-            raw_list = self._run_gsettings(
-                ["get", MEDIA_KEYS_SCHEMA, MEDIA_KEYS_LIST_KEY], check=False
-            )
-            for dconf_path in parse_gsettings_strv(raw_list):
+            for dconf_path in self._gsettings_get_strv(
+                MEDIA_KEYS_SCHEMA, MEDIA_KEYS_LIST_KEY, check=False
+            ):
                 comp = self.component_from_dconf_path(dconf_path)
                 if comp:
                     found.add(comp)
         return sorted(found)
+
+    def _read_schema_keybindings(self, schema: str) -> dict[str, list[str]]:
+        """Read all string-array accelerator keys from a GNOME keybinding schema."""
+        gio = self._get_gio()
+        if gio is not None:
+            source = gio.SettingsSchemaSource.get_default()
+            schema_obj = source.lookup(schema, True) if source is not None else None
+            if schema_obj is None:
+                return {}
+            settings = gio.Settings.new(schema)
+            out: dict[str, list[str]] = {}
+            for key in schema_obj.list_keys():
+                try:
+                    variant = settings.get_value(key)
+                    if variant.get_type_string() != "as":
+                        continue
+                    out[key] = [str(x) for x in settings.get_strv(key) if x]
+                except Exception:
+                    continue
+            return out
+
+        if not self._is_run_gsettings_patched() and not shutil.which("gsettings"):
+            return {}
+
+        out = {}
+        raw = self._run_gsettings(["list-recursively", schema], check=False)
+        for line in raw.splitlines():
+            parts = line.split(None, 2)
+            if len(parts) == 3 and parts[0] == schema:
+                out[parts[1]] = parse_gsettings_strv(parts[2])
+        if out:
+            return out
+
+        keys_raw = self._run_gsettings(["list-keys", schema], check=False)
+        for key in (k.strip() for k in keys_raw.splitlines() if k.strip()):
+            val_raw = self._run_gsettings(["get", schema, key], check=False)
+            accels = parse_gsettings_strv(val_raw)
+            if accels:
+                out[key] = accels
+        return out
+
+    def find_system_conflicts(self, shortcut: str) -> list[str]:
+        """Return GNOME system keybinding keys (schema:key) colliding with shortcut."""
+        if not shortcut or not shortcut.strip() or not self.use_gsettings:
+            return []
+        try:
+            target = parse_common_shortcut(shortcut).canonical
+        except ValueError:
+            return []
+
+        conflicts: list[str] = []
+        seen: set[str] = set()
+        for schema in SYSTEM_KEYBINDING_SCHEMAS:
+            for key, accels in self._read_schema_keybindings(schema).items():
+                for accel in accels:
+                    cleaned = accel.strip()
+                    if not cleaned or cleaned.lower() in ("disabled", "none"):
+                        continue
+                    try:
+                        canon = gnome_accel_to_canonical(cleaned)
+                    except ValueError:
+                        continue
+                    if canon == target:
+                        label = f"{schema}:{key}"
+                        if label not in seen:
+                            seen.add(label)
+                            conflicts.append(label)
+                        break
+        return conflicts
+
+    def diagnose(self, profiles: list[DropdownProfile] | None = None) -> list[tuple[str, str, str]]:
+        """Run non-destructive diagnostics for GNOME Wayland shortcut registration."""
+        results: list[tuple[str, str, str]] = []
+
+        gio = self._get_gio()
+        has_cli = bool(shutil.which("gsettings"))
+        if gio is not None:
+            results.append(
+                (
+                    "ok",
+                    "Backend de atajos GNOME",
+                    "Gio.Settings disponible en proceso con esquema media-keys.",
+                )
+            )
+        elif has_cli:
+            results.append(
+                (
+                    "ok",
+                    "Backend de atajos GNOME",
+                    "CLI gsettings disponible en PATH.",
+                )
+            )
+        else:
+            results.append(
+                (
+                    "error",
+                    "Backend de atajos GNOME",
+                    "No se encontró 'gsettings' ni Gio.Settings para registrar atajos en GNOME.",
+                )
+            )
+
+        if profiles:
+            conflict_found = False
+            enabled_count = 0
+            for profile in profiles:
+                if not profile.shortcut or not profile.shortcut.strip() or not profile.shortcut_enabled:
+                    continue
+                enabled_count += 1
+                conflicts = self.find_system_conflicts(profile.shortcut)
+                if conflicts:
+                    conflict_found = True
+                    results.append(
+                        (
+                            "warn",
+                            f"Conflicto de atajo ({profile.name})",
+                            f"'{profile.shortcut}' también está asignado en GNOME a: {', '.join(conflicts)}.",
+                        )
+                    )
+                status = self.get_shortcut_status(profile)
+                if status is ShortcutRegistrationStatus.OUT_OF_SYNC:
+                    results.append(
+                        (
+                            "warn",
+                            f"Sincronización ({profile.name})",
+                            f"El atajo '{profile.shortcut}' no está sincronizado con gsd-media-keys.",
+                        )
+                    )
+            if enabled_count > 0 and not conflict_found:
+                results.append(
+                    (
+                        "ok",
+                        "Conflictos de atajos GNOME",
+                        f"Sin colisiones del sistema para {enabled_count} perfil(es) activo(s).",
+                    )
+                )
+
+        return results

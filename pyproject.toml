@@ -8,7 +8,8 @@ version = "0.1.0"
 description = "Dropdown window manager configurator, script generator, and shortcut manager for Linux"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = []
 
 [project.optional-dependencies]
@@ -21,3 +22,13 @@ spawnkey-gui = "spawnkey.gui.app:launch_gui"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+spawnkey = [
+    "backends/kde_wayland/kwin_effect/**/*",
+    "backends/kde_wayland/kwin_effect/*",
+    "backends/gnome_wayland/extension/**/*",
+    "backends/gnome_wayland/extension/spawnkey@spawnkey.github.io/*",
+    "locale/**/*.mo",
+    "locale/**/*.po",
+]

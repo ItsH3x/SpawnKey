@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from spawnkey.i18n import _
+
 
 MODIFIER_ALIASES: dict[str, str] = {
     "meta": "Meta",
@@ -55,7 +57,20 @@ NAMED_KEYS: dict[str, str] = {
     "apostrophe": "'",
     "bracketleft": "[",
     "bracketright": "]",
+    "print": "Print",
+    "sys_req": "Print",
+    "pause": "Pause",
+    "break": "Pause",
+    "menu": "Menu",
+    "kp_add": "KP_Add",
+    "kp_subtract": "KP_Subtract",
+    "kp_multiply": "KP_Multiply",
+    "kp_divide": "KP_Divide",
+    "kp_decimal": "KP_Decimal",
 }
+
+for _kp in range(10):
+    NAMED_KEYS[f"kp_{_kp}"] = f"KP_{_kp}"
 
 for _n in range(1, 25):
     NAMED_KEYS[f"f{_n}"] = f"F{_n}"
@@ -73,11 +88,11 @@ class ParsedShortcut:
 def parse_shortcut(shortcut: str) -> ParsedShortcut:
     """Validate and normalize a shortcut string (e.g. 'Super+Shift+t' -> 'Meta+Shift+T')."""
     if not shortcut or not shortcut.strip():
-        raise ValueError("El atajo de teclado está vacío.")
+        raise ValueError(_("Keyboard shortcut is empty."))
 
     raw_parts = [part.strip() for part in shortcut.split("+") if part.strip()]
     if not raw_parts:
-        raise ValueError(f"Atajo inválido: {shortcut!r}")
+        raise ValueError(_("Invalid shortcut: {shortcut!r}").format(shortcut=shortcut))
 
     mod_names: set[str] = set()
     key_token: str | None = None
@@ -88,11 +103,19 @@ def parse_shortcut(shortcut: str) -> ParsedShortcut:
             mod_names.add(MODIFIER_ALIASES[low])
         else:
             if key_token is not None:
-                raise ValueError(f"Atajo inválido '{shortcut}': más de una tecla principal.")
+                raise ValueError(
+                    _("Invalid shortcut '{shortcut}': more than one primary key.").format(
+                        shortcut=shortcut
+                    )
+                )
             key_token = part
 
     if key_token is None:
-        raise ValueError(f"Atajo inválido '{shortcut}': falta la tecla principal.")
+        raise ValueError(
+            _("Invalid shortcut '{shortcut}': missing primary key.").format(
+                shortcut=shortcut
+            )
+        )
 
     key_low = key_token.lower()
     if key_low in NAMED_KEYS:
@@ -100,7 +123,9 @@ def parse_shortcut(shortcut: str) -> ParsedShortcut:
     elif len(key_token) == 1:
         key_label = key_token.upper()
     else:
-        raise ValueError(f"Tecla no reconocida en el atajo: '{key_token}'.")
+        raise ValueError(
+            _("Unrecognized key in shortcut: '{key}'.").format(key=key_token)
+        )
 
     ordered_mods = tuple(m for m in MODIFIER_ORDER if m in mod_names)
     canonical = "+".join([*ordered_mods, key_label])

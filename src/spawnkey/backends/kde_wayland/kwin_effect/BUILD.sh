@@ -3,10 +3,28 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_DIR="${BUILD_DIR:-/tmp/spawnkey-kwin-effect-build}"
+CURRENT_USER="${USER:-$(id -un)}"
+BUILD_DIR="${BUILD_DIR:-/tmp/spawnkey-kwin-effect-build-${CURRENT_USER}}"
 USER_QT_PLUGINS="${HOME}/.local/lib/qt6/plugins"
 TARGET_DIR="${USER_QT_PLUGINS}/kwin/effects/plugins"
 ENV_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/plasma-workspace/env"
+INSTALL_PACMAN_HOOK=0
+
+for arg in "$@"; do
+    case "${arg}" in
+        --install-pacman-hook)
+            INSTALL_PACMAN_HOOK=1
+            ;;
+        -h|--help)
+            echo "Uso: $0 [--install-pacman-hook]"
+            exit 0
+            ;;
+        *)
+            echo "Opción desconocida: ${arg}" >&2
+            exit 1
+            ;;
+    esac
+done
 
 cmake -S "$SCRIPT_DIR" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release
 cmake --build "$BUILD_DIR" --parallel
@@ -54,3 +72,34 @@ EOF
 fi
 
 echo "Instalado en: $TARGET_DIR/spawnkey_corners.so"
+
+if [[ "${INSTALL_PACMAN_HOOK}" -eq 1 ]]; then
+    if ! command -v pacman >/dev/null 2>&1; then
+        echo "Aviso: pacman no está disponible en este sistema; se omitió el pacman hook." >&2
+    else
+        HOOK_PATH="/etc/pacman.d/hooks/spawnkey-kwin-corners.hook"
+        HOOK_USER="${SUDO_USER:-$CURRENT_USER}"
+        HOOK_HOME="$(eval echo "~${HOOK_USER}")"
+        HOOK_CONTENT="[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = kwin
+
+[Action]
+Description = Recompilando efecto KWin spawnkey_corners para la nueva versión de KWin...
+When = PostTransaction
+Exec = /usr/bin/runuser -u ${HOOK_USER} -- /usr/bin/env HOME=${HOOK_HOME} USER=${HOOK_USER} ${SCRIPT_DIR}/BUILD.sh
+"
+        if [[ "$(id -u)" -eq 0 ]]; then
+            mkdir -p /etc/pacman.d/hooks
+            printf '%s' "${HOOK_CONTENT}" > "${HOOK_PATH}"
+            chmod 644 "${HOOK_PATH}"
+        else
+            sudo mkdir -p /etc/pacman.d/hooks
+            printf '%s' "${HOOK_CONTENT}" | sudo tee "${HOOK_PATH}" >/dev/null
+            sudo chmod 644 "${HOOK_PATH}"
+        fi
+        echo "Pacman hook instalado en: ${HOOK_PATH}"
+    fi
+fi

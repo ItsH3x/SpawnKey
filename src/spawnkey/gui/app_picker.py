@@ -11,6 +11,7 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk, Pango
 
 from spawnkey.core.desktop_apps import DesktopApp, discover_desktop_apps
+from spawnkey.i18n import _
 
 
 def _make_app_icon(icon_spec: str) -> Gtk.Image:
@@ -35,7 +36,7 @@ class AppPickerDialog(Gtk.Window):
         on_selected: Callable[[DesktopApp], None],
     ) -> None:
         super().__init__(
-            title="Seleccionar aplicación instalada",
+            title=_("Select installed application"),
             transient_for=parent,
             modal=True,
             default_width=540,
@@ -53,7 +54,7 @@ class AppPickerDialog(Gtk.Window):
         self.set_child(root)
 
         self._search = Gtk.SearchEntry()
-        self._search.set_placeholder_text("Filtrar por nombre, comando o descripción...")
+        self._search.set_placeholder_text(_("Filter by name, command, or description..."))
         self._search.connect("search-changed", self._on_search_changed)
         root.append(self._search)
 
@@ -72,9 +73,9 @@ class AppPickerDialog(Gtk.Window):
         btn_bar.set_halign(Gtk.Align.END)
         root.append(btn_bar)
 
-        btn_cancel = Gtk.Button(label="Cancelar")
+        btn_cancel = Gtk.Button(label=_("Cancel"))
         btn_cancel.connect("clicked", lambda _b: self.close())
-        btn_choose = Gtk.Button(label="Seleccionar")
+        btn_choose = Gtk.Button(label=_("Select"))
         btn_choose.add_css_class("suggested-action")
         btn_choose.connect("clicked", self._on_choose_clicked)
 
@@ -128,7 +129,7 @@ class AppPickerDialog(Gtk.Window):
             title_row.append(lbl_name)
 
             if app.terminal:
-                lbl_term = Gtk.Label(label="[Terminal]")
+                lbl_term = Gtk.Label(label=_("[Terminal]"))
                 lbl_term.add_css_class("spawnkey-badge")
                 lbl_term.add_css_class("spawnkey-badge-terminal")
                 title_row.append(lbl_term)

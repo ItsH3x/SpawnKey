@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.spawnkey.App</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>SpawnKey</name>
+  <summary>Dropdown window manager, script generator, and shortcut configurator for Linux</summary>
+  <summary xml:lang="es">Configurador de ventanas dropdown, generador de scripts y gestor de atajos para Linux</summary>
+  <description>
+    <p>
+      SpawnKey configures keyboard-triggered dropdown windows for any Linux application with zero resident daemon.
+      Each profile generates a standalone executable shell script invoked directly by your desktop environment's native shortcut system.
+    </p>
+    <p xml:lang="es">
+      SpawnKey configura ventanas tipo dropdown activadas por atajos de teclado para cualquier aplicación en Linux sin daemon residente.
+      Cada perfil genera un script ejecutable autónomo invocado directamente por el gestor de atajos nativo de tu entorno de escritorio.
+    </p>
+    <ul>
+      <li>Wayland-first support for KDE Plasma 6, GNOME, Hyprland, and Sway, plus universal X11 fallback</li>
+      <li xml:lang="es">Soporte Wayland-first para KDE Plasma 6, GNOME, Hyprland y Sway, además de respaldo universal en X11</li>
+      <li>Persistent, ephemeral, and system-tray window lifecycle modes with multi-monitor relocation</li>
+      <li xml:lang="es">Modos de ciclo de vida persistente, efímero y bandeja del sistema con reubicación multi-monitor</li>
+      <li>GTK 4 interactive editor with multi-screen preview, diagnostics dialog, and ES/EN localization</li>
+      <li xml:lang="es">Editor interactivo en GTK 4 con vista previa multi-pantalla, diálogo de diagnósticos e interfaz ES/EN</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.spawnkey.App.desktop</launchable>
+  <provides>
+    <binary>spawnkey</binary>
+    <binary>spawnkey-gui</binary>
+  </provides>
+  <categories>
+    <category>Utility</category>
+    <category>Settings</category>
+    <category>System</category>
+  </categories>
+  <url type="homepage">https://github.com/ItsH3x/SpawnKey</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-11-26"/>
+  </releases>
+</component>

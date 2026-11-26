@@ -34,10 +34,18 @@ def _probe_tools() -> dict[str, bool]:
         "qdbus",
         "busctl",
         "gsettings",
+        "gnome-extensions",
+        "dconf",
         "hyprctl",
         "swaymsg",
+        "i3-msg",
         "xdotool",
         "xrandr",
+        "wmctrl",
+        "xprop",
+        "xfconf-query",
+        "xdg-terminal-exec",
+        "flatpak",
     ]
     return {tool: shutil.which(tool) is not None for tool in candidates}
 
@@ -75,7 +83,11 @@ def detect_environment(
             backend = BackendKind.SWAY
         elif "kde" in desktop_tokens or "plasma" in desktop_tokens:
             backend = BackendKind.KDE_WAYLAND
-        elif "gnome" in desktop_tokens or "ubuntu" in desktop_tokens:
+        elif (
+            "gnome" in desktop_tokens
+            or any(t.startswith("gnome-") for t in desktop_tokens)
+            or "ubuntu" in desktop_tokens
+        ) and "budgie" not in desktop_tokens and "cosmic" not in desktop_tokens:
             backend = BackendKind.GNOME_WAYLAND
 
     return EnvironmentInfo(

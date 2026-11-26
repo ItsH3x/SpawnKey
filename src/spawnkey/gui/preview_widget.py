@@ -19,6 +19,7 @@ from spawnkey.core.models import (
     SizeUnit,
     SlideDirection,
 )
+from spawnkey.i18n import _
 
 
 class PreviewWidget(Gtk.Box):
@@ -28,12 +29,19 @@ class PreviewWidget(Gtk.Box):
         self,
         monitor: MonitorRect,
         on_custom_drag: Callable[[float, float], None] | None = None,
+        *,
+        monitors: list[MonitorRect] | None = None,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         self._monitor = monitor
+        self._active_monitor = monitor
+        self._monitors: list[MonitorRect] = []
+        self._override_monitor_idx: int | None = None
+        self._updating_monitor_dd = False
         self._profile: DropdownProfile | None = None
         self._on_custom_drag = on_custom_drag
         self._screen_box = (0.0, 0.0, 1.0, 1.0)
+        self._monitor_boxes: list[tuple[MonitorRect, tuple[float, float, float, float]]] = []
         self._drag_origin = (0.0, 0.0)
 
         # Transient animation simulation state (zero daemon; runs only on button click)
@@ -41,6 +49,18 @@ class PreviewWidget(Gtk.Box):
         self._anim_progress: float = 1.0
         self._anim_elapsed_ms: float = 0.0
         self._anim_duration_ms: int = 0
+
+        # Compact preview display selector (shown only in multi-monitor setups)
+        self._selector_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        lbl_display = Gtk.Label(label=_("Preview display:"), xalign=0.0)
+        lbl_display.add_css_class("dim-label")
+        self._dd_preview_monitor = Gtk.DropDown()
+        self._dd_preview_monitor.set_hexpand(False)
+        self._dd_preview_monitor.connect("notify::selected", self._on_preview_monitor_selected)
+        self._selector_row.append(lbl_display)
+        self._selector_row.append(self._dd_preview_monitor)
+        self._selector_row.set_visible(False)
+        self.append(self._selector_row)
 
         self._area = Gtk.DrawingArea()
         self._area.set_content_width(260)
@@ -59,14 +79,14 @@ class PreviewWidget(Gtk.Box):
         self._info_label.set_hexpand(True)
         info_row.append(self._info_label)
 
-        self._btn_simulate = Gtk.Button(label="Simular entrada")
-        self._btn_simulate.set_tooltip_text("Simula la animación de entrada en la vista previa")
+        self._btn_simulate = Gtk.Button(label=_("Simulate entry"))
+        self._btn_simulate.set_tooltip_text(_("Simulate the entry animation in the preview"))
         self._btn_simulate.set_valign(Gtk.Align.CENTER)
         self._btn_simulate.connect("clicked", self._on_simulate_clicked)
         info_row.append(self._btn_simulate)
         self.append(info_row)
 
-        # Allow clicking/dragging directly on preview when in custom position mode
+        # Allow clicking/dragging directly on preview in custom mode, or clicking another monitor
         click = Gtk.GestureClick()
         click.connect("pressed", self._on_pointer_pressed)
         self._area.add_controller(click)
@@ -78,6 +98,8 @@ class PreviewWidget(Gtk.Box):
 
         self.connect("unmap", self._on_unmap)
 
+        self.set_monitors(monitors if monitors is not None else [monitor], active_monitor=monitor)
+
     def _stop_simulation(self) -> None:
         if self._anim_source_id is not None:
             GLib.source_remove(self._anim_source_id)
@@ -87,28 +109,133 @@ class PreviewWidget(Gtk.Box):
     def _on_unmap(self, *_args) -> None:
         self._stop_simulation()
 
-    def set_monitor(self, monitor: MonitorRect) -> None:
-        self._monitor = monitor
+    @staticmethod
+    def _deduplicate_monitors(monitors: list[MonitorRect]) -> list[MonitorRect]:
+        dedup: list[MonitorRect] = []
+        for mon in monitors:
+            if mon not in dedup:
+                dedup.append(mon)
+        return dedup
+
+    def _sync_monitor_dropdown(self) -> None:
+        self._updating_monitor_dd = True
+        try:
+            multi = len(self._monitors) > 1
+            self._selector_row.set_visible(multi)
+            if not multi:
+                return
+            items = [_("Auto (policy)")] + [
+                f"{m.name} ({m.width}×{m.height})" if m.name else f"{m.width}×{m.height}"
+                for m in self._monitors
+            ]
+            self._dd_preview_monitor.set_model(Gtk.StringList.new(items))
+            selected_idx = (
+                0 if self._override_monitor_idx is None else self._override_monitor_idx + 1
+            )
+            self._dd_preview_monitor.set_selected(selected_idx)
+        finally:
+            self._updating_monitor_dd = False
+
+    def _on_preview_monitor_selected(self, dd: Gtk.DropDown, _pspec) -> None:
+        if self._updating_monitor_dd:
+            return
+        idx = int(dd.get_selected())
+        if idx <= 0 or idx > len(self._monitors):
+            self._override_monitor_idx = None
+            self._monitor = self._active_monitor
+        else:
+            self._override_monitor_idx = idx - 1
+            self._monitor = self._monitors[self._override_monitor_idx]
+        self._update_info_label()
         self._area.queue_draw()
+
+    def set_monitors(
+        self,
+        monitors: list[MonitorRect],
+        active_monitor: MonitorRect | None = None,
+    ) -> None:
+        prev_override_mon = (
+            self._monitors[self._override_monitor_idx]
+            if self._override_monitor_idx is not None
+            and 0 <= self._override_monitor_idx < len(self._monitors)
+            else None
+        )
+
+        dedup = self._deduplicate_monitors(list(monitors))
+        if not dedup:
+            dedup = [active_monitor or self._monitor]
+
+        target_active = active_monitor if active_monitor is not None else dedup[0]
+        if target_active not in dedup:
+            dedup.append(target_active)
+
+        self._monitors = dedup
+        self._active_monitor = target_active
+
+        if len(self._monitors) <= 1 or prev_override_mon is None:
+            self._override_monitor_idx = None
+            self._monitor = self._active_monitor
+        elif prev_override_mon in self._monitors:
+            self._override_monitor_idx = self._monitors.index(prev_override_mon)
+            self._monitor = self._monitors[self._override_monitor_idx]
+        else:
+            self._override_monitor_idx = None
+            self._monitor = self._active_monitor
+
+        self._sync_monitor_dropdown()
+        self._update_info_label()
+        self._area.queue_draw()
+
+    def set_monitor(self, monitor: MonitorRect) -> None:
+        self._active_monitor = monitor
+        if not self._monitors or len(self._monitors) <= 1:
+            self._monitors = [monitor]
+            self._override_monitor_idx = None
+            self._monitor = monitor
+        else:
+            if monitor not in self._monitors:
+                self._monitors.append(monitor)
+            if self._override_monitor_idx is None:
+                self._monitor = monitor
+        self._sync_monitor_dropdown()
+        self._update_info_label()
+        self._area.queue_draw()
+
+    def _update_info_label(self) -> None:
+        if self._profile is None:
+            return
+        profile = self._profile
+        geom = compute_geometry(profile, self._monitor)
+        hint = _(" · Drag to move") if profile.position_mode is PositionMode.CUSTOM else ""
+        extras: list[str] = []
+        if profile.position_mode is PositionMode.PRESET and profile.edge_margin > 0:
+            extras.append(_("Margin {px}px").format(px=profile.edge_margin))
+        if profile.opacity < 1.0:
+            extras.append(_("Opacity {pct}%").format(pct=round(profile.opacity * 100)))
+        if profile.corner_radius > 0:
+            extras.append(_("Radius {px}px").format(px=profile.corner_radius))
+        extra_str = (" · " + " · ".join(extras)) if extras else ""
+        mon_label = (
+            f"{self._monitor.name} ({self._monitor.width}×{self._monitor.height})"
+            if len(self._monitors) > 1 and self._monitor.name
+            else f"{self._monitor.width}×{self._monitor.height}"
+        )
+        self._info_label.set_text(
+            _("Display {monitor} · Window {w}×{h} at ({x}, {y}){extras}{hint}").format(
+                monitor=mon_label,
+                w=geom.width,
+                h=geom.height,
+                x=geom.x - self._monitor.x,
+                y=geom.y - self._monitor.y,
+                extras=extra_str,
+                hint=hint,
+            )
+        )
 
     def set_profile(self, profile: DropdownProfile) -> None:
         self._stop_simulation()
         self._profile = profile
-        geom = compute_geometry(profile, self._monitor)
-        hint = " · Arrastra para mover" if profile.position_mode is PositionMode.CUSTOM else ""
-        extras: list[str] = []
-        if profile.position_mode is PositionMode.PRESET and profile.edge_margin > 0:
-            extras.append(f"Margen {profile.edge_margin}px")
-        if profile.opacity < 1.0:
-            extras.append(f"Opacidad {round(profile.opacity * 100)}%")
-        if profile.corner_radius > 0:
-            extras.append(f"Radio {profile.corner_radius}px")
-        extra_str = (" · " + " · ".join(extras)) if extras else ""
-        self._info_label.set_text(
-            f"Monitor {self._monitor.width}×{self._monitor.height} · "
-            f"Ventana {geom.width}×{geom.height} en ({geom.x - self._monitor.x}, {geom.y - self._monitor.y})"
-            f"{extra_str}{hint}"
-        )
+        self._update_info_label()
         can_animate = profile.animation_type is not AnimationType.NONE
         self._btn_simulate.set_sensitive(can_animate)
         self._area.queue_draw()
@@ -164,6 +291,18 @@ class PreviewWidget(Gtk.Box):
             self._on_custom_drag(float(rel_px_x), float(rel_px_y))
 
     def _on_pointer_pressed(self, _gesture: Gtk.GestureClick, _n: int, x: float, y: float) -> None:
+        if self._profile is None or self._profile.position_mode is not PositionMode.CUSTOM:
+            if len(self._monitors) > 1:
+                for idx, (mon, (mx, my, mw, mh)) in enumerate(self._monitor_boxes):
+                    if mx <= x <= mx + mw and my <= y <= my + mh:
+                        if mon != self._monitor:
+                            self._override_monitor_idx = idx
+                            self._monitor = mon
+                            self._sync_monitor_dropdown()
+                            self._update_info_label()
+                            self._area.queue_draw()
+                        return
+            return
         self._pointer_to_custom_coords(x, y)
 
     def _on_drag_begin(self, _gesture: Gtk.GestureDrag, x: float, y: float) -> None:
@@ -174,34 +313,115 @@ class PreviewWidget(Gtk.Box):
         ox, oy = self._drag_origin
         self._pointer_to_custom_coords(ox + dx, oy + dy)
 
+    @staticmethod
+    def _draw_connector_label(cr, mx: float, my: float, mw: float, mh: float, text: str, *, active: bool) -> None:
+        if not text or mw < 24 or mh < 16:
+            return
+        cr.save()
+        cr.rectangle(mx + 2.0, my + 2.0, max(1.0, mw - 4.0), max(1.0, mh - 4.0))
+        cr.clip()
+        cr.select_font_face("sans-serif", 0, 1 if active else 0)
+        cr.set_font_size(9.5)
+        ext = cr.text_extents(text)
+        if active:
+            pad_x = 5.0
+            pad_y = 2.5
+            bw = min(mw - 8.0, ext.width + pad_x * 2)
+            bh = ext.height + pad_y * 2
+            bx = mx + 4.0
+            by = my + mh - bh - 4.0
+            cr.set_source_rgba(0.08, 0.10, 0.14, 0.78)
+            cr.rectangle(bx, by, bw, bh)
+            cr.fill()
+            cr.set_source_rgba(0.60, 0.85, 1.0, 0.95)
+            cr.move_to(bx + pad_x, by + pad_y + ext.height)
+            cr.show_text(text)
+        else:
+            tx = mx + (mw - ext.width) / 2.0
+            ty = my + (mh + ext.height) / 2.0
+            cr.set_source_rgba(0.68, 0.73, 0.82, 0.70)
+            cr.move_to(max(mx + 4.0, tx), ty)
+            cr.show_text(text)
+        cr.restore()
+
     def _on_draw(self, _area: Gtk.DrawingArea, cr, width: int, height: int) -> None:
         pad = 10.0
         avail_w = max(10.0, width - 2 * pad)
         avail_h = max(10.0, height - 2 * pad)
-        aspect = self._monitor.width / max(1, self._monitor.height)
-
-        if avail_w / avail_h > aspect:
-            sh = avail_h
-            sw = sh * aspect
-        else:
-            sw = avail_w
-            sh = sw / aspect
-
-        sx = (width - sw) / 2.0
-        sy = (height - sh) / 2.0
-        self._screen_box = (sx, sy, sw, sh)
 
         # Background
         cr.set_source_rgb(0.11, 0.12, 0.15)
         cr.rectangle(0, 0, width, height)
         cr.fill()
 
-        # Monitor frame
+        multi = len(self._monitors) > 1
+        if not multi:
+            aspect = self._monitor.width / max(1, self._monitor.height)
+            if avail_w / avail_h > aspect:
+                sh = avail_h
+                sw = sh * aspect
+            else:
+                sw = avail_w
+                sh = sw / aspect
+
+            sx = (width - sw) / 2.0
+            sy = (height - sh) / 2.0
+            self._screen_box = (sx, sy, sw, sh)
+            self._monitor_boxes = [(self._monitor, (sx, sy, sw, sh))]
+        else:
+            min_x = min(m.x for m in self._monitors)
+            min_y = min(m.y for m in self._monitors)
+            max_x = max(m.x + m.width for m in self._monitors)
+            max_y = max(m.y + m.height for m in self._monitors)
+            total_w = max(1, max_x - min_x)
+            total_h = max(1, max_y - min_y)
+
+            scale = min(avail_w / total_w, avail_h / total_h)
+            union_w = total_w * scale
+            union_h = total_h * scale
+            origin_x = (width - union_w) / 2.0
+            origin_y = (height - union_h) / 2.0
+
+            self._monitor_boxes = []
+            target_box: tuple[float, float, float, float] | None = None
+            for m in self._monitors:
+                mx = origin_x + (m.x - min_x) * scale
+                my = origin_y + (m.y - min_y) * scale
+                mw = max(6.0, m.width * scale)
+                mh = max(6.0, m.height * scale)
+                box = (mx, my, mw, mh)
+                self._monitor_boxes.append((m, box))
+                if m == self._monitor:
+                    target_box = box
+
+            if target_box is None:
+                target_box = self._monitor_boxes[0][1]
+            sx, sy, sw, sh = target_box
+            self._screen_box = (sx, sy, sw, sh)
+
+            # Draw non-target monitors with dimmed fill/border and connector label
+            for m, (mx, my, mw, mh) in self._monitor_boxes:
+                if m == self._monitor:
+                    continue
+                cr.set_source_rgb(0.14, 0.16, 0.20)
+                cr.rectangle(mx, my, mw, mh)
+                cr.fill()
+                cr.set_source_rgb(0.32, 0.36, 0.44)
+                cr.set_line_width(1.0)
+                cr.rectangle(mx, my, mw, mh)
+                cr.stroke()
+                self._draw_connector_label(cr, mx, my, mw, mh, m.name, active=False)
+
+        # Target monitor frame
         cr.set_source_rgb(0.18, 0.20, 0.25)
         cr.rectangle(sx, sy, sw, sh)
         cr.fill()
-        cr.set_source_rgb(0.45, 0.50, 0.60)
-        cr.set_line_width(1.5)
+        if multi:
+            cr.set_source_rgb(0.38, 0.72, 0.98)
+            cr.set_line_width(1.8)
+        else:
+            cr.set_source_rgb(0.45, 0.50, 0.60)
+            cr.set_line_width(1.5)
         cr.rectangle(sx, sy, sw, sh)
         cr.stroke()
 
@@ -216,6 +436,8 @@ class PreviewWidget(Gtk.Box):
         cr.stroke()
 
         if self._profile is None:
+            if multi:
+                self._draw_connector_label(cr, sx, sy, sw, sh, self._monitor.name, active=True)
             return
 
         geom = compute_geometry(self._profile, self._monitor)
@@ -250,7 +472,7 @@ class PreviewWidget(Gtk.Box):
                 start_x = sx + sw - ww + step_x
                 wx = start_x + (target_wx - start_x) * t
 
-        # Clip dropdown inside monitor frame during slide simulation
+        # Clip dropdown inside target monitor frame during slide simulation
         cr.save()
         cr.rectangle(sx, sy, sw, sh)
         cr.clip()
@@ -314,3 +536,6 @@ class PreviewWidget(Gtk.Box):
             cr.stroke()
 
         cr.restore()
+
+        if multi:
+            self._draw_connector_label(cr, sx, sy, sw, sh, self._monitor.name, active=True)

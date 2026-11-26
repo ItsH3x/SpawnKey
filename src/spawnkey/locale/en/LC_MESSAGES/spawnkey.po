@@ -1,0 +1,1294 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: SpawnKey 0.1.0\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "  Imported IDs: {ids}"
+msgstr "  Imported IDs: {ids}"
+
+msgid "  Skipped IDs : {ids}"
+msgstr "  Skipped IDs : {ids}"
+
+msgid "  Updated IDs : {ids}"
+msgstr "  Updated IDs : {ids}"
+
+msgid " (Warning: shortcut shared with {names})"
+msgstr " (Warning: shortcut shared with {names})"
+
+msgid " (margin {px}px)"
+msgstr " (margin {px}px)"
+
+msgid " (showing {count})"
+msgstr " (showing {count})"
+
+msgid " [Terminal]"
+msgstr " [Terminal]"
+
+msgid " · Drag to move"
+msgstr " · Drag to move"
+
+msgid "'{shortcut}' collides with the system: {details}"
+msgstr "'{shortcut}' collides with the system: {details}"
+
+msgid "(No SpawnKey profiles configured)"
+msgstr "(No SpawnKey profiles configured)"
+
+msgid "(disabled / unassigned)"
+msgstr "(disabled / unassigned)"
+
+msgid "(no shortcut)"
+msgstr "(no shortcut)"
+
+msgid "(none detected)"
+msgstr "(none detected)"
+
+msgid "(none)"
+msgstr "(none)"
+
+msgid "(not generated)"
+msgstr "(not generated)"
+
+msgid "(unassigned)"
+msgstr "(unassigned)"
+
+msgid "+ New"
+msgstr "+ New"
+
+msgid ".desktop file ID (e.g. Alacritty.desktop)"
+msgstr ".desktop file ID (e.g. Alacritty.desktop)"
+
+msgid "3×3 grid"
+msgstr "3×3 grid"
+
+msgid "Active"
+msgstr "Active"
+
+msgid "All files"
+msgstr "All files"
+
+msgid "Animation"
+msgstr "Animation"
+
+msgid "Animation         : {value}"
+msgstr "Animation         : {value}"
+
+msgid "Animation : {anim}"
+msgstr "Animation : {anim}"
+
+msgid "Animation : {anim} | Duration: {duration}ms | Slide start: ({sx}, {sy})"
+msgstr "Animation : {anim} | Duration: {duration}ms | Slide start: ({sx}, {sy})"
+
+msgid "Animation duration factor (0.1 to 5.0)"
+msgstr "Animation duration factor (0.1 to 5.0)"
+
+msgid "Animation effect"
+msgstr "Animation effect"
+
+msgid "Animation scale must be between 0.1 and 5.0, got: {scale}"
+msgstr "Animation scale must be between 0.1 and 5.0, got: {scale}"
+
+msgid "Appearance"
+msgstr "Appearance"
+
+msgid "Appearance: opacity={opacity}% | corner_radius={radius}px | keep_above={above}"
+msgstr "Appearance: opacity={opacity}% | corner_radius={radius}px | keep_above={above}"
+
+msgid "Application"
+msgstr "Application"
+
+msgid "Applications found: {total}{suffix}"
+msgstr "Applications found: {total}{suffix}"
+
+msgid "Arguments:"
+msgstr "Arguments:"
+
+msgid "Assign a key combination first."
+msgstr "Assign a key combination first."
+
+msgid "Auto (policy)"
+msgstr "Auto (policy)"
+
+msgid "Backend          : {value}"
+msgstr "Backend          : {value}"
+
+msgid "Backend notice   : {value}"
+msgstr "Backend notice   : {value}"
+
+msgid "Behavior"
+msgstr "Behavior"
+
+msgid "Best-effort (no active backend detected)"
+msgstr "Best-effort (no active backend detected)"
+
+msgid "Blank profile"
+msgstr "Blank profile"
+
+msgid "Bottom"
+msgstr "Bottom"
+
+msgid "Bottom center"
+msgstr "Bottom center"
+
+msgid "Bottom left"
+msgstr "Bottom left"
+
+msgid "Bottom right"
+msgstr "Bottom right"
+
+msgid "Cancel"
+msgstr "Cancel"
+
+msgid "Capabilities     : opacity={opacity} | corner_radius={corner_radius} | click_outside={click_outside} | animations={animations}"
+msgstr "Capabilities     : opacity={opacity} | corner_radius={corner_radius} | click_outside={click_outside} | animations={animations}"
+
+msgid "Capture"
+msgstr "Capture"
+
+msgid "Center"
+msgstr "Center"
+
+msgid "Center left"
+msgstr "Center left"
+
+msgid "Center right"
+msgstr "Center right"
+
+msgid "Centered tool"
+msgstr "Centered tool"
+
+msgid "Choose whether to export only the selected profile or all saved profiles."
+msgstr "Choose whether to export only the selected profile or all saved profiles."
+
+msgid "Clean up"
+msgstr "Clean up"
+
+msgid "Cleaned orphaned shortcut: {id}"
+msgstr "Cleaned orphaned shortcut: {id}"
+
+msgid "Clear"
+msgstr "Clear"
+
+msgid "Clipboard unavailable."
+msgstr "Clipboard unavailable."
+
+msgid "Close"
+msgstr "Close"
+
+msgid "Command           : {value}"
+msgstr "Command           : {value}"
+
+msgid "Command   : {cmd}"
+msgstr "Command   : {cmd}"
+
+msgid "Command is empty."
+msgstr "Command is empty."
+
+msgid "Command or executable cannot be empty."
+msgstr "Command or executable cannot be empty."
+
+msgid "Command or path to executable file"
+msgstr "Command or path to executable file"
+
+msgid "Command:"
+msgstr "Command:"
+
+msgid "Compute exact geometry for a given monitor"
+msgstr "Compute exact geometry for a given monitor"
+
+msgid "Conflict with profile(s): {names}."
+msgstr "Conflict with profile(s): {names}."
+
+msgid "Coordinates (X, Y)"
+msgstr "Coordinates (X, Y)"
+
+msgid "Copy"
+msgstr "Copy"
+
+msgid "Corner radius cannot be negative, got: {radius}"
+msgstr "Corner radius cannot be negative, got: {radius}"
+
+msgid "Could not detect active monitor: {error}"
+msgstr "Could not detect active monitor: {error}"
+
+msgid "Could not initialize the active backend."
+msgstr "Could not initialize the active backend."
+
+msgid "Could not read import file '{path}': {error}"
+msgstr "Could not read import file '{path}': {error}"
+
+msgid "Could not register shortcut '{shortcut}' for '{id}': {error}"
+msgstr "Could not register shortcut '{shortcut}' for '{id}': {error}"
+
+msgid "Create a profile, its .sh script, and register its shortcut"
+msgstr "Create a profile, its .sh script, and register its shortcut"
+
+msgid "Creating new dropdown..."
+msgstr "Creating new dropdown..."
+
+msgid "Cursor monitor"
+msgstr "Cursor monitor"
+
+msgid "Custom pixel coordinates cannot be negative."
+msgstr "Custom pixel coordinates cannot be negative."
+
+msgid "Custom position unit"
+msgstr "Custom position unit"
+
+msgid "Custom position unit (defaults to --unit)"
+msgstr "Custom position unit (defaults to --unit)"
+
+msgid "Default initial settings"
+msgstr "Default initial settings"
+
+msgid "Delete"
+msgstr "Delete"
+
+msgid "Delete a profile, its .sh script, and its system shortcut"
+msgstr "Delete a profile, its .sh script, and its system shortcut"
+
+msgid "Delete failed: {error}"
+msgstr "Delete failed: {error}"
+
+msgid "Deleted '{id}' (profile={profile}, script={script}, shortcut={shortcut})."
+msgstr "Deleted '{id}' (profile={profile}, script={script}, shortcut={shortcut})."
+
+msgid "Deleted '{id}': profile={profile}, script={script}, shortcut={shortcut}"
+msgstr "Deleted '{id}': profile={profile}, script={script}, shortcut={shortcut}"
+
+msgid "Desktop          : {value}"
+msgstr "Desktop          : {value}"
+
+msgid "Desktop ID        : {value}"
+msgstr "Desktop ID        : {value}"
+
+msgid "Desktop entry '{desktop_id}' for '{id}' was not found on this system."
+msgstr "Desktop entry '{desktop_id}' for '{id}' was not found on this system."
+
+msgid "Desktop shortcut collision: {details}."
+msgstr "Desktop shortcut collision: {details}."
+
+msgid "Diagnose environment, backends, scripts, and shortcuts"
+msgstr "Diagnose environment, backends, scripts, and shortcuts"
+
+msgid "Diagnostic report copied to clipboard."
+msgstr "Diagnostic report copied to clipboard."
+
+msgid "Diagnostics"
+msgstr "Diagnostics"
+
+msgid "Disable shortcut without clearing keys"
+msgstr "Disable shortcut without clearing keys"
+
+msgid "Disable the shortcut while keeping the saved key combination"
+msgstr "Disable the shortcut while keeping the saved key combination"
+
+msgid "Disabled"
+msgstr "Disabled"
+
+msgid "Discard changes"
+msgstr "Discard changes"
+
+msgid "Display {monitor} · Window {w}×{h} at ({x}, {y}){extras}{hint}"
+msgstr "Display {monitor} · Window {w}×{h} at ({x}, {y}){extras}{hint}"
+
+msgid "Display:"
+msgstr "Display:"
+
+msgid "Do not force the window always on top"
+msgstr "Do not force the window always on top"
+
+msgid "Do not hide when clicking outside the window"
+msgstr "Do not hide when clicking outside the window"
+
+msgid "Do not register shortcuts on the desktop"
+msgstr "Do not register shortcuts on the desktop"
+
+msgid "Do not register the shortcut in the desktop yet"
+msgstr "Do not register the shortcut in the desktop yet"
+
+msgid "Do not relocate existing window to the active monitor on toggle"
+msgstr "Do not relocate existing window to the active monitor on toggle"
+
+msgid "Dropdown name cannot be empty."
+msgstr "Dropdown name cannot be empty."
+
+msgid "Duplicate"
+msgstr "Duplicate"
+
+msgid "Duplicated '{name}'. Assign a shortcut and save."
+msgstr "Duplicated '{name}'. Assign a shortcut and save."
+
+msgid "Duration:"
+msgstr "Duration:"
+
+msgid "ERROR"
+msgstr "ERROR"
+
+msgid "Edge from which the window slides in"
+msgstr "Edge from which the window slides in"
+
+msgid "Edge margin (px):"
+msgstr "Edge margin (px):"
+
+msgid "Edge margin cannot be negative, got: {margin}"
+msgstr "Edge margin cannot be negative, got: {margin}"
+
+msgid "Edge margin in px (3x3 grid)"
+msgstr "Edge margin in px (3x3 grid)"
+
+msgid "Edit an existing profile"
+msgstr "Edit an existing profile"
+
+msgid "Effect:"
+msgstr "Effect:"
+
+msgid "Enable shortcut registration"
+msgstr "Enable shortcut registration"
+
+msgid "Ephemeral"
+msgstr "Ephemeral"
+
+msgid "Ephemeral (close on hide)"
+msgstr "Ephemeral (close on hide)"
+
+msgid "Ephemeral · center · 55×60% · fade"
+msgstr "Ephemeral · center · 55×60% · fade"
+
+msgid "Error: .desktop app '{desktop}' not found."
+msgstr "Error: .desktop app '{desktop}' not found."
+
+msgid "Error: could not load GTK 4 (python-gobject / gtk4): {error}"
+msgstr "Error: could not load GTK 4 (python-gobject / gtk4): {error}"
+
+msgid "Error: profile '{id}' not found."
+msgstr "Error: profile '{id}' not found."
+
+msgid "Error: specify a key combination with --keys (e.g. --keys 'Meta+Shift+T')."
+msgstr "Error: specify a key combination with --keys (e.g. --keys 'Meta+Shift+T')."
+
+msgid "Error: {error}"
+msgstr "Error: {error}"
+
+msgid "Executable '{binary}' not found in PATH."
+msgstr "Executable '{binary}' not found in PATH."
+
+msgid "Executable check warning for '{id}': {detail}"
+msgstr "Executable check warning for '{id}': {detail}"
+
+msgid "Executable error: {detail}"
+msgstr "Executable error: {detail}"
+
+msgid "Executable..."
+msgstr "Executable..."
+
+msgid "Explicit profile ID (optional)"
+msgstr "Explicit profile ID (optional)"
+
+msgid "Export all"
+msgstr "Export all"
+
+msgid "Export failed: {error}"
+msgstr "Export failed: {error}"
+
+msgid "Export profiles"
+msgstr "Export profiles"
+
+msgid "Export profiles to a portable JSON bundle"
+msgstr "Export profiles to a portable JSON bundle"
+
+msgid "Export selected"
+msgstr "Export selected"
+
+msgid "Export..."
+msgstr "Export..."
+
+msgid "Exported profiles to {path}."
+msgstr "Exported profiles to {path}."
+
+msgid "Exported profiles to: {path}"
+msgstr "Exported profiles to: {path}"
+
+msgid "Extra args        : {value}"
+msgstr "Extra args        : {value}"
+
+msgid "Fade"
+msgstr "Fade"
+
+msgid "Failed to remove shortcut: {error}"
+msgstr "Failed to remove shortcut: {error}"
+
+msgid "Fallback without backend: {width}x{height}"
+msgstr "Fallback without backend: {width}x{height}"
+
+msgid "File does not exist: {path}"
+msgstr "File does not exist: {path}"
+
+msgid "File lacks execute permission: {path}"
+msgstr "File lacks execute permission: {path}"
+
+msgid "Filter by name, ID, or comment"
+msgstr "Filter by name, ID, or comment"
+
+msgid "Filter by name, command, or description..."
+msgstr "Filter by name, command, or description..."
+
+msgid "Focused monitor"
+msgstr "Focused monitor"
+
+msgid "For apps with a tray icon; restores normal window state when hidden."
+msgstr "For apps with a tray icon; restores normal window state when hidden."
+
+msgid "Force hide (persistent) or close (ephemeral)"
+msgstr "Force hide (persistent) or close (ephemeral)"
+
+msgid "Geometry"
+msgstr "Geometry"
+
+msgid "Global shortcut"
+msgstr "Global shortcut"
+
+msgid "Graphics session : {value}"
+msgstr "Graphics session : {value}"
+
+msgid "Height:"
+msgstr "Height:"
+
+msgid "Hide when clicking outside the window"
+msgstr "Hide when clicking outside the window"
+
+msgid "Hide when clicking outside window"
+msgstr "Hide when clicking outside window"
+
+msgid "Hide window from the taskbar"
+msgstr "Hide window from the taskbar"
+
+msgid "If you continue without saving, your current changes to this profile will be lost."
+msgstr "If you continue without saving, your current changes to this profile will be lost."
+
+msgid "Import complete: {imported} imported, {updated} updated, {skipped} skipped."
+msgstr "Import complete: {imported} imported, {updated} updated, {skipped} skipped."
+
+msgid "Import failed: {error}"
+msgstr "Import failed: {error}"
+
+msgid "Import profiles"
+msgstr "Import profiles"
+
+msgid "Import profiles from a JSON file or '-' for stdin"
+msgstr "Import profiles from a JSON file or '-' for stdin"
+
+msgid "Import..."
+msgstr "Import..."
+
+msgid "Imported: {imported}, Updated: {updated}, Skipped: {skipped}"
+msgstr "Imported: {imported}, Updated: {updated}, Skipped: {skipped}"
+
+msgid "Input JSON file path, or '-' to read from stdin"
+msgstr "Input JSON file path, or '-' to read from stdin"
+
+msgid "Inspect environment, compositor backend, scripts, and shortcut status"
+msgstr "Inspect environment, compositor backend, scripts, and shortcut status"
+
+msgid "Installed app..."
+msgstr "Installed app..."
+
+msgid "Instant"
+msgstr "Instant"
+
+msgid "Invalid JSON from stdin: {error}"
+msgstr "Invalid JSON from stdin: {error}"
+
+msgid "Invalid JSON in '{path}': {error}"
+msgstr "Invalid JSON in '{path}': {error}"
+
+msgid "Invalid command syntax: {error}"
+msgstr "Invalid command syntax: {error}"
+
+msgid "Invalid import payload: 'profiles' must be a list."
+msgstr "Invalid import payload: 'profiles' must be a list."
+
+msgid "Invalid import payload: expected a 'profiles' bundle or profile object."
+msgstr "Invalid import payload: expected a 'profiles' bundle or profile object."
+
+msgid "Invalid import payload: expected a JSON object or list of profiles."
+msgstr "Invalid import payload: expected a JSON object or list of profiles."
+
+msgid "Invalid monitor format '{spec}', use WIDTHxHEIGHT (e.g. 1920x1080)."
+msgstr "Invalid monitor format '{spec}', use WIDTHxHEIGHT (e.g. 1920x1080)."
+
+msgid "Invalid profile ID '{id}': use only lowercase letters, numbers, '-' or '_'."
+msgstr "Invalid profile ID '{id}': use only lowercase letters, numbers, '-' or '_'."
+
+msgid "Invalid profile entry at index {index}: expected an object."
+msgstr "Invalid profile entry at index {index}: expected an object."
+
+msgid "Invalid profile entry at index {index}: {error}"
+msgstr "Invalid profile entry at index {index}: {error}"
+
+msgid "Invalid shortcut '{shortcut}': missing primary key."
+msgstr "Invalid shortcut '{shortcut}': missing primary key."
+
+msgid "Invalid shortcut '{shortcut}': more than one primary key."
+msgstr "Invalid shortcut '{shortcut}': more than one primary key."
+
+msgid "Invalid shortcut: {shortcut!r}"
+msgstr "Invalid shortcut: {shortcut!r}"
+
+msgid "JSON files (*.json)"
+msgstr "JSON files (*.json)"
+
+msgid "Keep always on top of other windows"
+msgstr "Keep always on top of other windows"
+
+msgid "Keep existing window on its current monitor on toggle"
+msgstr "Keep existing window on its current monitor on toggle"
+
+msgid "Keep the window always on top"
+msgstr "Keep the window always on top"
+
+msgid "Keeps the window in the background; the shortcut toggles or minimizes it."
+msgstr "Keeps the window in the background; the shortcut toggles or minimizes it."
+
+msgid "Key combination (e.g. 'Meta+Shift+T')"
+msgstr "Key combination (e.g. 'Meta+Shift+T')"
+
+msgid "Keyboard shortcut is empty."
+msgstr "Keyboard shortcut is empty."
+
+msgid "Launches the app when shown and terminates its process when hidden."
+msgstr "Launches the app when shown and terminates its process when hidden."
+
+msgid "Left"
+msgstr "Left"
+
+msgid "Lifecycle"
+msgstr "Lifecycle"
+
+msgid "List .desktop applications discovered on the system"
+msgstr "List .desktop applications discovered on the system"
+
+msgid "List all created shortcuts and their actual status"
+msgstr "List all created shortcuts and their actual status"
+
+msgid "List saved profiles"
+msgstr "List saved profiles"
+
+msgid "Manage global shortcuts created by SpawnKey"
+msgstr "Manage global shortcuts created by SpawnKey"
+
+msgid "Manage profiles and generated scripts"
+msgstr "Manage profiles and generated scripts"
+
+msgid "Margin {px}px"
+msgstr "Margin {px}px"
+
+msgid "Match hint        : {value}"
+msgstr "Match hint        : {value}"
+
+msgid "Maximum wait time to capture the new window on slow startups (Flatpak, Electron, Java)"
+msgstr "Maximum wait time to capture the new window on slow startups (Flatpak, Electron, Java)"
+
+msgid "Maximum wait when capturing a new window in ms (1000 to 60000)"
+msgstr "Maximum wait when capturing a new window in ms (1000 to 60000)"
+
+msgid "Missing execute permission (+x): {path}"
+msgstr "Missing execute permission (+x): {path}"
+
+msgid "Mode              : {label} ({value}) — {desc}"
+msgstr "Mode              : {label} ({value}) — {desc}"
+
+msgid "Mode      : {label} — {desc}"
+msgstr "Mode      : {label} — {desc}"
+
+msgid "Monitor   : {w}x{h} @ ({x}, {y}) [policy: {policy}]"
+msgstr "Monitor   : {w}x{h} @ ({x}, {y}) [policy: {policy}]"
+
+msgid "Monitor dimensions must be greater than 1px: {width}x{height}"
+msgstr "Monitor dimensions must be greater than 1px: {width}x{height}"
+
+msgid "Monitor policy    : {value}"
+msgstr "Monitor policy    : {value}"
+
+msgid "Monitor resolution (e.g. 1920x1080); empty = active monitor"
+msgstr "Monitor resolution (e.g. 1920x1080); empty = active monitor"
+
+msgid "Name              : {value}"
+msgstr "Name              : {value}"
+
+msgid "Name:"
+msgstr "Name:"
+
+msgid "No active shortcut backend; saved '{id}' with shortcut disabled."
+msgstr "No active shortcut backend; saved '{id}' with shortcut disabled."
+
+msgid "No animation"
+msgstr "No animation"
+
+msgid "No orphaned SpawnKey shortcuts found on the system."
+msgstr "No orphaned SpawnKey shortcuts found on the system."
+
+msgid "No orphaned shortcuts."
+msgstr "No orphaned shortcuts."
+
+msgid "No profile, script, or shortcut existed with id '{id}'."
+msgstr "No profile, script, or shortcut existed with id '{id}'."
+
+msgid "No profiles configured yet."
+msgstr "No profiles configured yet."
+
+msgid "No profiles to export."
+msgstr "No profiles to export."
+
+msgid "No shortcut"
+msgstr "No shortcut"
+
+msgid "No titlebar or system borders (always enabled)."
+msgstr "No titlebar or system borders (always enabled)."
+
+msgid "Not supported by the active backend ({backend})"
+msgstr "Not supported by the active backend ({backend})"
+
+msgid "OK"
+msgstr "OK"
+
+msgid "Offsets the window from the screen edge in edge-aligned positions."
+msgstr "Offsets the window from the screen edge in edge-aligned positions."
+
+msgid "Opacity between 0.1 and 1.0"
+msgstr "Opacity between 0.1 and 1.0"
+
+msgid "Opacity must be between 0.1 and 1.0, got: {opacity}"
+msgstr "Opacity must be between 0.1 and 1.0, got: {opacity}"
+
+msgid "Opacity {pct}%"
+msgstr "Opacity {pct}%"
+
+msgid "Opacity:"
+msgstr "Opacity:"
+
+msgid "Open the SpawnKey GTK 4 graphical interface"
+msgstr "Open the SpawnKey GTK 4 graphical interface"
+
+msgid "Optional launch arguments"
+msgstr "Optional launch arguments"
+
+msgid "Options           : borderless={yes} | keep_above={above} | click_outside={outside} | taskbar={taskbar} | opacity={opacity}% | corner_radius={radius}px"
+msgstr "Options           : borderless={yes} | keep_above={above} | click_outside={outside} | taskbar={taskbar} | opacity={opacity}% | corner_radius={radius}px"
+
+msgid "Options   : borderless={yes} | keep_above={above} | click_outside={outside} | taskbar={taskbar} | relocate_on_toggle={relocate} | opacity={opacity}% | corner_radius={radius}px | timeout={timeout}ms"
+msgstr "Options   : borderless={yes} | keep_above={above} | click_outside={outside} | taskbar={taskbar} | relocate_on_toggle={relocate} | opacity={opacity}% | corner_radius={radius}px | timeout={timeout}ms"
+
+msgid "Orphaned shortcuts detected on the system (run `spawnkey shortcut cleanup`):"
+msgstr "Orphaned shortcuts detected on the system (run `spawnkey shortcut cleanup`):"
+
+msgid "Out of sync"
+msgstr "Out of sync"
+
+msgid "Output JSON file (omit for stdout)"
+msgstr "Output JSON file (omit for stdout)"
+
+msgid "Overwrite existing profiles with the same ID"
+msgstr "Overwrite existing profiles with the same ID"
+
+msgid "Path is not an executable file: {path}"
+msgstr "Path is not an executable file: {path}"
+
+msgid "Percent (%)"
+msgstr "Percent (%)"
+
+msgid "Percentage X position must be between 0 and 99.9, got: {x}"
+msgstr "Percentage X position must be between 0 and 99.9, got: {x}"
+
+msgid "Percentage Y position must be between 0 and 99.9, got: {y}"
+msgstr "Percentage Y position must be between 0 and 99.9, got: {y}"
+
+msgid "Percentage height must be between 1 and 99.9 (smaller than monitor), got: {height}"
+msgstr "Percentage height must be between 1 and 99.9 (smaller than monitor), got: {height}"
+
+msgid "Percentage width must be between 1 and 99.9 (smaller than monitor), got: {width}"
+msgstr "Percentage width must be between 1 and 99.9 (smaller than monitor), got: {width}"
+
+msgid "Persist."
+msgstr "Persist."
+
+msgid "Persistent (minimize)"
+msgstr "Persistent (minimize)"
+
+msgid "Persistent · top · 85×45%"
+msgstr "Persistent · top · 85×45%"
+
+msgid "Pixel height must be at least 50px, got: {height}"
+msgstr "Pixel height must be at least 50px, got: {height}"
+
+msgid "Pixel width must be at least 50px, got: {width}"
+msgstr "Pixel width must be at least 50px, got: {width}"
+
+msgid "Pixels (px)"
+msgstr "Pixels (px)"
+
+msgid "Position"
+msgstr "Position"
+
+msgid "Position          : {value}"
+msgstr "Position          : {value}"
+
+msgid "Position unit:"
+msgstr "Position unit:"
+
+msgid "Press keys (Esc to cancel)"
+msgstr "Press keys (Esc to cancel)"
+
+msgid "Preview"
+msgstr "Preview"
+
+msgid "Preview display:"
+msgstr "Preview display:"
+
+msgid "Primary monitor"
+msgstr "Primary monitor"
+
+msgid "Print profile as JSON"
+msgstr "Print profile as JSON"
+
+msgid "Profile   : {name} ({id})"
+msgstr "Profile   : {name} ({id})"
+
+msgid "Profile '{id}' not found."
+msgstr "Profile '{id}' not found."
+
+msgid "Profile ID"
+msgstr "Profile ID"
+
+msgid "Profile ID        : {value}"
+msgstr "Profile ID        : {value}"
+
+msgid "Profile IDs to export (empty = all)"
+msgstr "Profile IDs to export (empty = all)"
+
+msgid "Profile already had no registered shortcut."
+msgstr "Profile already had no registered shortcut."
+
+msgid "Profile created : {id} -> {path}"
+msgstr "Profile created : {id} -> {path}"
+
+msgid "Profile saved, but shortcut failed: {error}"
+msgstr "Profile saved, but shortcut failed: {error}"
+
+msgid "Profile updated : {id} -> {path}"
+msgstr "Profile updated : {id} -> {path}"
+
+msgid "Profiles"
+msgstr "Profiles"
+
+msgid "Profiles (XDG)   : {value}"
+msgstr "Profiles (XDG)   : {value}"
+
+msgid "Quick terminal"
+msgstr "Quick terminal"
+
+msgid "Quick utility"
+msgstr "Quick utility"
+
+msgid "Radius notice    : {value}"
+msgstr "Radius notice    : {value}"
+
+msgid "Radius {px}px"
+msgstr "Radius {px}px"
+
+msgid "Ready ({backend} · monitor {width}×{height})"
+msgstr "Ready ({backend} · monitor {width}×{height})"
+
+msgid "Refresh"
+msgstr "Refresh"
+
+msgid "Register or update a profile shortcut on the desktop"
+msgstr "Register or update a profile shortcut on the desktop"
+
+msgid "Register shortcut on desktop"
+msgstr "Register shortcut on desktop"
+
+msgid "Relocate existing window to active monitor on toggle"
+msgstr "Relocate existing window to active monitor on toggle"
+
+msgid "Relocate on toggle: {value}"
+msgstr "Relocate on toggle: {value}"
+
+msgid "Relocate/focus on current monitor instead of hiding"
+msgstr "Relocate/focus on current monitor instead of hiding"
+
+msgid "Remove orphaned SpawnKey shortcuts from the desktop"
+msgstr "Remove orphaned SpawnKey shortcuts from the desktop"
+
+msgid "Remove shortcut"
+msgstr "Remove shortcut"
+
+msgid "Remove shortcut key binding from profile and desktop"
+msgstr "Remove shortcut key binding from profile and desktop"
+
+msgid "Remove the desktop shortcut without deleting the profile"
+msgstr "Remove the desktop shortcut without deleting the profile"
+
+msgid "Result limit (0 = all)"
+msgstr "Result limit (0 = all)"
+
+msgid "Right"
+msgstr "Right"
+
+msgid "Rounded corners (px):"
+msgstr "Rounded corners (px):"
+
+msgid "Rounded corners in px"
+msgstr "Rounded corners in px"
+
+msgid "Save & apply"
+msgstr "Save & apply"
+
+msgid "Save the dropdown first to test it."
+msgstr "Save the dropdown first to test it."
+
+msgid "Saved '{name}'. {shortcut_msg}{conflict_note}"
+msgstr "Saved '{name}'. {shortcut_msg}{conflict_note}"
+
+msgid "Saved without shortcut."
+msgstr "Saved without shortcut."
+
+msgid "Scale slider enabled: {value}"
+msgstr "Scale slider enabled: {value}"
+
+msgid "Script created  : {path}"
+msgstr "Script created  : {path}"
+
+msgid "Script does not exist: {path}"
+msgstr "Script does not exist: {path}"
+
+msgid "Script path       : {value}"
+msgstr "Script path       : {value}"
+
+msgid "Script updated  : {path}"
+msgstr "Script updated  : {path}"
+
+msgid "Scripts  (XDG)   : {value}"
+msgstr "Scripts  (XDG)   : {value}"
+
+msgid "Select"
+msgstr "Select"
+
+msgid "Select executable file"
+msgstr "Select executable file"
+
+msgid "Select installed application"
+msgstr "Select installed application"
+
+msgid "Selected application: {name} ({desktop_id}){suffix}"
+msgstr "Selected application: {name} ({desktop_id}){suffix}"
+
+msgid "Selected executable: {path}"
+msgstr "Selected executable: {path}"
+
+msgid "Shortcut          : {shortcut}{status} (enabled={enabled})"
+msgstr "Shortcut          : {shortcut}{status} (enabled={enabled})"
+
+msgid "Shortcut        : {status}"
+msgstr "Shortcut        : {status}"
+
+msgid "Shortcut  : {shortcut}{status} | Script: {script}"
+msgstr "Shortcut  : {shortcut}{status} | Script: {script}"
+
+msgid "Shortcut '{shortcut}' active."
+msgstr "Shortcut '{shortcut}' active."
+
+msgid "Shortcut '{shortcut}' out of sync ({status})."
+msgstr "Shortcut '{shortcut}' out of sync ({status})."
+
+msgid "Shortcut backend unavailable."
+msgstr "Shortcut backend unavailable."
+
+msgid "Shortcut conflicts detected between profiles:"
+msgstr "Shortcut conflicts detected between profiles:"
+
+msgid "Shortcut manager ({backend}):"
+msgstr "Shortcut manager ({backend}):"
+
+msgid "Shortcut registered: {id} -> {shortcut} ({backend_id})"
+msgstr "Shortcut registered: {id} -> {shortcut} ({backend_id})"
+
+msgid "Shortcut removed for '{id}' (cleaned from desktop: {cleaned})."
+msgstr "Shortcut removed for '{id}' (cleaned from desktop: {cleaned})."
+
+msgid "Shortcut removed from system."
+msgstr "Shortcut removed from system."
+
+msgid "Show detected environment and XDG paths"
+msgstr "Show detected environment and XDG paths"
+
+msgid "Show full configuration for a profile"
+msgstr "Show full configuration for a profile"
+
+msgid "Show in taskbar"
+msgstr "Show in taskbar"
+
+msgid "Show window in the taskbar"
+msgstr "Show window in the taskbar"
+
+msgid "Side panel"
+msgstr "Side panel"
+
+msgid "Simulate entry"
+msgstr "Simulate entry"
+
+msgid "Simulate the entry animation in the preview"
+msgstr "Simulate the entry animation in the preview"
+
+msgid "Size              : {w}x{h} ({unit})"
+msgstr "Size              : {w}x{h} ({unit})"
+
+msgid "Size      : {w}x{h} ({unit}) | Position: {pos} | Monitor: {mon}"
+msgstr "Size      : {w}x{h} ({unit}) | Position: {pos} | Monitor: {mon}"
+
+msgid "Size unit:"
+msgstr "Size unit:"
+
+msgid "Slide"
+msgstr "Slide"
+
+msgid "Slide + fade"
+msgstr "Slide + fade"
+
+msgid "Slide from:"
+msgstr "Slide from:"
+
+msgid "Source type       : {value}"
+msgstr "Source type       : {value}"
+
+msgid "SpawnKey CLI and GUI"
+msgstr "SpawnKey CLI and GUI"
+
+msgid "SpawnKey Diagnostics"
+msgstr "SpawnKey Diagnostics"
+
+msgid "SpawnKey — Dropdown & Shortcut Manager"
+msgstr "SpawnKey — Dropdown & Shortcut Manager"
+
+msgid "Startup timeout   : {ms}ms"
+msgstr "Startup timeout   : {ms}ms"
+
+msgid "Startup timeout (ms):"
+msgstr "Startup timeout (ms):"
+
+msgid "Startup timeout (startup_timeout_ms) must be between 1000 and 60000 ms, got: {timeout}"
+msgstr "Startup timeout (startup_timeout_ms) must be between 1000 and 60000 ms, got: {timeout}"
+
+msgid "State    (XDG)   : {value}"
+msgstr "State    (XDG)   : {value}"
+
+msgid "Style"
+msgstr "Style"
+
+msgid "Summary: {ok} OK · {warn} WARN · {error} ERROR"
+msgstr "Summary: {ok} OK · {warn} WARN · {error} ERROR"
+
+msgid "Summary: {ok} OK, {warn} warning(s), {error} error(s)."
+msgstr "Summary: {ok} OK, {warn} warning(s), {error} error(s)."
+
+msgid "Supported by {backend}"
+msgstr "Supported by {backend}"
+
+msgid "System tray"
+msgstr "System tray"
+
+msgid "Target    : {w}x{h} @ ({x}, {y}) [edge margin: {margin}px]"
+msgstr "Target    : {w}x{h} @ ({x}, {y}) [edge margin: {margin}px]"
+
+msgid "Test"
+msgstr "Test"
+
+msgid "Test failed: {error}"
+msgstr "Test failed: {error}"
+
+msgid "Test now"
+msgstr "Test now"
+
+msgid "The active backend ({backend}) cannot enforce rounded corners."
+msgstr "The active backend ({backend}) cannot enforce rounded corners."
+
+msgid "The active backend ({backend}) does not support hiding on outside click."
+msgstr "The active backend ({backend}) does not support hiding on outside click."
+
+msgid "The active backend ({backend}) does not support per-window opacity."
+msgstr "The active backend ({backend}) does not support per-window opacity."
+
+msgid "Toggle (show/hide/close) a profile's dropdown"
+msgstr "Toggle (show/hide/close) a profile's dropdown"
+
+msgid "Toggled dropdown '{id}'."
+msgstr "Toggled dropdown '{id}'."
+
+msgid "Tools            : {value}"
+msgstr "Tools            : {value}"
+
+msgid "Top"
+msgstr "Top"
+
+msgid "Top center"
+msgstr "Top center"
+
+msgid "Top left"
+msgstr "Top left"
+
+msgid "Top right"
+msgstr "Top right"
+
+msgid "Top terminal"
+msgstr "Top terminal"
+
+msgid "Tray"
+msgstr "Tray"
+
+msgid "Tray side panel"
+msgstr "Tray side panel"
+
+msgid "Tray · right · 38×82% · margin 8px"
+msgstr "Tray · right · 38×82% · margin 8px"
+
+msgid "Unassigned"
+msgstr "Unassigned"
+
+msgid "Unrecognized key in shortcut: '{key}'."
+msgstr "Unrecognized key in shortcut: '{key}'."
+
+msgid "Unsaved changes"
+msgstr "Unsaved changes"
+
+msgid "Verify profile loading without opening windows"
+msgstr "Verify profile loading without opening windows"
+
+msgid "Visible dropdown name"
+msgstr "Visible dropdown name"
+
+msgid "WARN"
+msgstr "WARN"
+
+msgid "WM_CLASS or app_id (optional)"
+msgstr "WM_CLASS or app_id (optional)"
+
+msgid "Warning         : active backend ({backend}) does not support rounded corners{detail}; value ({radius}px) was saved for compatible compositors."
+msgstr "Warning         : active backend ({backend}) does not support rounded corners{detail}; value ({radius}px) was saved for compatible compositors."
+
+msgid "Warning       : shortcut '{shortcut}' is already assigned to: {names}."
+msgstr "Warning       : shortcut '{shortcut}' is already assigned to: {names}."
+
+msgid "Warning: shortcut '{shortcut}' is already assigned to: {names}."
+msgstr "Warning: shortcut '{shortcut}' is already assigned to: {names}."
+
+msgid "Warning: {error}"
+msgstr "Warning: {error}"
+
+msgid "Warning: {msg}"
+msgstr "Warning: {msg}"
+
+msgid "Warnings: {warnings}"
+msgstr "Warnings: {warnings}"
+
+msgid "When monitor policy is cursor or focused, pressing the shortcut moves or focuses the open dropdown instead of hiding it."
+msgstr "When monitor policy is cursor or focused, pressing the shortcut moves or focuses the open dropdown instead of hiding it."
+
+msgid "Width:"
+msgstr "Width:"
+
+msgid "Window & shortcut"
+msgstr "Window & shortcut"
+
+msgid "Window backend unavailable."
+msgstr "Window backend unavailable."
+
+msgid "Window class (WM_CLASS or app_id)"
+msgstr "Window class (WM_CLASS or app_id)"
+
+msgid "Window class:"
+msgstr "Window class:"
+
+msgid "X:"
+msgstr "X:"
+
+msgid "Y:"
+msgstr "Y:"
+
+msgid "[Terminal]"
+msgstr "[Terminal]"
+
+msgid "anchor {v}-{h}{margin}"
+msgstr "anchor {v}-{h}{margin}"
+
+msgid "backend"
+msgstr "backend"
+
+msgid "backend_hint"
+msgstr "backend_hint"
+
+msgid "capabilities"
+msgstr "capabilities"
+
+msgid "collision"
+msgstr "collision"
+
+msgid "corner_radius"
+msgstr "corner_radius"
+
+msgid "custom ({x}, {y} {unit})"
+msgstr "custom ({x}, {y} {unit})"
+
+msgid "e.g. Meta+Shift+T (or click Capture)"
+msgstr "e.g. Meta+Shift+T (or click Capture)"
+
+msgid "e.g. Quick terminal"
+msgstr "e.g. Quick terminal"
+
+msgid "e.g. alacritty or /path/to/binary"
+msgstr "e.g. alacritty or /path/to/binary"
+
+msgid "monitor"
+msgstr "monitor"
+
+msgid "no"
+msgstr "no"
+
+msgid "none (scale disabled)"
+msgstr "none (scale disabled)"
+
+msgid "opacity={opacity}, corner_radius={corner_radius}, click_outside={click_outside}, animations={animations}"
+msgstr "opacity={opacity}, corner_radius={corner_radius}, click_outside={click_outside}, animations={animations}"
+
+msgid "orphaned_shortcuts"
+msgstr "orphaned_shortcuts"
+
+msgid "remove warning: {error}"
+msgstr "remove warning: {error}"
+
+msgid "removed from desktop"
+msgstr "removed from desktop"
+
+msgid "script"
+msgstr "script"
+
+msgid "session"
+msgstr "session"
+
+msgid "session={session} | desktop={desktop} | backend={backend}"
+msgstr "session={session} | desktop={desktop} | backend={backend}"
+
+msgid "shortcut"
+msgstr "shortcut"
+
+msgid "shortcut_diagnostics"
+msgstr "shortcut_diagnostics"
+
+msgid "was not registered"
+msgstr "was not registered"
+
+msgid "window_diagnostics"
+msgstr "window_diagnostics"
+
+msgid "yes"
+msgstr "yes"
+
+msgid "{anim} from {direction} (x{scale})"
+msgstr "{anim} from {direction} (x{scale})"
+
+msgid "{name} (copy)"
+msgstr "{name} (copy)"
+
+msgid "{shortcut} (disabled)"
+msgstr "{shortcut} (disabled)"
+
+msgid "{shortcut} (registered in {backend})"
+msgstr "{shortcut} (registered in {backend})"
+
+msgid "{shortcut} (saved, but not registered: {error})"
+msgstr "{shortcut} (saved, but not registered: {error})"
+
+msgid "{shortcut} (saved, not registered)"
+msgstr "{shortcut} (saved, not registered)"
+
+msgid "Cleaned {count} orphaned shortcut."
+msgid_plural "Cleaned {count} orphaned shortcuts."
+msgstr[0] "Cleaned {count} orphaned shortcut."
+msgstr[1] "Cleaned {count} orphaned shortcuts."
+
+msgid "{count} orphaned shortcut"
+msgid_plural "{count} orphaned shortcuts"
+msgstr[0] "{count} orphaned shortcut"
+msgstr[1] "{count} orphaned shortcuts"
+
+msgid "{count} orphaned shortcut: {items}"
+msgid_plural "{count} orphaned shortcuts: {items}"
+msgstr[0] "{count} orphaned shortcut: {items}"
+msgstr[1] "{count} orphaned shortcuts: {items}"
+
+msgid "Service org.kde.KWin /Scripting is reachable."
+msgstr "Service org.kde.KWin /Scripting is reachable."
+
+msgid "Not reachable: {error}"
+msgstr "Not reachable: {error}"
+
+msgid "spawnkey_corners effect"
+msgstr "spawnkey_corners effect"
+
+msgid "Loaded and active in KWin."
+msgstr "Loaded and active in KWin."
+
+msgid "Not installed or not loaded (optional: rounded corners disabled)."
+msgstr "Not installed or not loaded (optional: rounded corners disabled)."
+
+msgid "Not found in PATH; fallback resolution 1920x1080 will be used."
+msgstr "Not found in PATH; fallback resolution 1920x1080 will be used."
+
+msgid "{count} active display detected."
+msgid_plural "{count} active displays detected."
+msgstr[0] "{count} active display detected."
+msgstr[1] "{count} active displays detected."
+
+msgid "Executed with no active displays detected."
+msgstr "Executed with no active displays detected."
+
+msgid "Exited with code {code}."
+msgstr "Exited with code {code}."
+
+msgid "Execution error: {error}"
+msgstr "Execution error: {error}"
+
+msgid "Available: {path}"
+msgstr "Available: {path}"
+
+msgid "Neither 'kwriteconfig6' nor 'kwriteconfig5' was found in PATH."
+msgstr "Neither 'kwriteconfig6' nor 'kwriteconfig5' was found in PATH."
+
+msgid "'busctl' was not found in PATH."
+msgstr "'busctl' was not found in PATH."
+
+msgid "Isolated file mode (D-Bus disabled)."
+msgstr "Isolated file mode (D-Bus disabled)."
+
+msgid "Cannot verify because 'busctl' is missing."
+msgstr "Cannot verify because 'busctl' is missing."
+
+msgid "Service org.kde.kglobalaccel is active on D-Bus."
+msgstr "Service org.kde.kglobalaccel is active on D-Bus."
+
+msgid "Service org.kde.kglobalaccel is not responding: {error}"
+msgstr "Service org.kde.kglobalaccel is not responding: {error}"
+
+msgid "Shortcut conflict ({profile_id})"
+msgstr "Shortcut conflict ({profile_id})"
+
+msgid "'{shortcut}' conflicts with: {conflicts}"
+msgstr "'{shortcut}' conflicts with: {conflicts}"
+
+msgid "Shortcut conflicts"
+msgstr "Shortcut conflicts"
+
+msgid "No collisions with system shortcuts."
+msgstr "No collisions with system shortcuts."

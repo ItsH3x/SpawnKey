@@ -11,7 +11,7 @@ gi.require_version("Gdk", "4.0")
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gdk, Gio, Gtk, Pango
 
-from spawnkey.backends.base import ShortcutRegistrationStatus
+from spawnkey.backends.base import DiagnosticItem, ShortcutRegistrationStatus
 from spawnkey.core.desktop_apps import (
     DesktopApp,
     validate_executable_command,
@@ -35,13 +35,14 @@ from spawnkey.core.models import (
 from spawnkey.gui.app_picker import AppPickerDialog
 from spawnkey.gui.preview_widget import PreviewWidget
 from spawnkey.gui.shortcut_capture import build_shortcut_capture_widget
+from spawnkey.i18n import _, ngettext
 
 
 _STATUS_LABELS = {
-    ShortcutRegistrationStatus.ACTIVE: "Activo",
-    ShortcutRegistrationStatus.UNASSIGNED: "Sin atajo",
-    ShortcutRegistrationStatus.DISABLED: "Inactivo",
-    ShortcutRegistrationStatus.OUT_OF_SYNC: "Sin aplicar",
+    ShortcutRegistrationStatus.ACTIVE: "Active",
+    ShortcutRegistrationStatus.UNASSIGNED: "No shortcut",
+    ShortcutRegistrationStatus.DISABLED: "Disabled",
+    ShortcutRegistrationStatus.OUT_OF_SYNC: "Out of sync",
 }
 
 _STATUS_CSS = {
@@ -52,36 +53,36 @@ _STATUS_CSS = {
 }
 
 _DIRECTIONS = [
-    (SlideDirection.TOP, "Arriba"),
-    (SlideDirection.BOTTOM, "Abajo"),
-    (SlideDirection.LEFT, "Izquierda"),
-    (SlideDirection.RIGHT, "Derecha"),
+    (SlideDirection.TOP, "Top"),
+    (SlideDirection.BOTTOM, "Bottom"),
+    (SlideDirection.LEFT, "Left"),
+    (SlideDirection.RIGHT, "Right"),
 ]
 
 _ANIMATIONS = [
-    (AnimationType.SLIDE, "Deslizar"),
-    (AnimationType.FADE, "Fundido"),
-    (AnimationType.SLIDE_FADE, "Deslizar + fundido"),
-    (AnimationType.NONE, "Instantánea"),
+    (AnimationType.SLIDE, "Slide"),
+    (AnimationType.FADE, "Fade"),
+    (AnimationType.SLIDE_FADE, "Slide + fade"),
+    (AnimationType.NONE, "Instant"),
 ]
 
 _MONITOR_POLICIES = [
-    (MonitorPolicy.CURSOR, "Monitor del cursor"),
-    (MonitorPolicy.FOCUSED, "Monitor con foco"),
-    (MonitorPolicy.PRIMARY, "Monitor principal"),
+    (MonitorPolicy.CURSOR, "Cursor monitor"),
+    (MonitorPolicy.FOCUSED, "Focused monitor"),
+    (MonitorPolicy.PRIMARY, "Primary monitor"),
 ]
 
 # Compact 3x3 directional symbols with descriptive tooltips
 _ANCHOR_GRID = [
-    (AnchorV.TOP, AnchorH.LEFT, "↖", "Superior izquierda"),
-    (AnchorV.TOP, AnchorH.CENTER, "↑", "Superior centro"),
-    (AnchorV.TOP, AnchorH.RIGHT, "↗", "Superior derecha"),
-    (AnchorV.CENTER, AnchorH.LEFT, "←", "Centro izquierda"),
-    (AnchorV.CENTER, AnchorH.CENTER, "•", "Centro"),
-    (AnchorV.CENTER, AnchorH.RIGHT, "→", "Centro derecha"),
-    (AnchorV.BOTTOM, AnchorH.LEFT, "↙", "Inferior izquierda"),
-    (AnchorV.BOTTOM, AnchorH.CENTER, "↓", "Inferior centro"),
-    (AnchorV.BOTTOM, AnchorH.RIGHT, "↘", "Inferior derecha"),
+    (AnchorV.TOP, AnchorH.LEFT, "↖", "Top left"),
+    (AnchorV.TOP, AnchorH.CENTER, "↑", "Top center"),
+    (AnchorV.TOP, AnchorH.RIGHT, "↗", "Top right"),
+    (AnchorV.CENTER, AnchorH.LEFT, "←", "Center left"),
+    (AnchorV.CENTER, AnchorH.CENTER, "•", "Center"),
+    (AnchorV.CENTER, AnchorH.RIGHT, "→", "Center right"),
+    (AnchorV.BOTTOM, AnchorH.LEFT, "↙", "Bottom left"),
+    (AnchorV.BOTTOM, AnchorH.CENTER, "↓", "Bottom center"),
+    (AnchorV.BOTTOM, AnchorH.RIGHT, "↘", "Bottom right"),
 ]
 
 _APP_CSS = b"""
@@ -134,6 +135,23 @@ def _install_css() -> None:
         provider,
         Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
     )
+
+
+def _make_json_file_filters() -> tuple[Gio.ListStore, Gtk.FileFilter]:
+    """Create a Gio.ListStore of JSON and wildcard Gtk.FileFilters."""
+    json_filter = Gtk.FileFilter()
+    json_filter.set_name(_("JSON files (*.json)"))
+    json_filter.add_pattern("*.json")
+    json_filter.add_mime_type("application/json")
+
+    all_filter = Gtk.FileFilter()
+    all_filter.set_name(_("All files"))
+    all_filter.add_pattern("*")
+
+    filters = Gio.ListStore.new(Gtk.FileFilter)
+    filters.append(json_filter)
+    filters.append(all_filter)
+    return filters, json_filter
 
 
 def detect_gdk_monitors(
@@ -212,19 +230,157 @@ def query_gdk_monitor(
     )
 
 
+class _DiagnosticsDialog(Gtk.Window):
+    """Modal window showing SpawnKey environment, backend, and shortcut diagnostics."""
+
+    def __init__(self, parent: Gtk.Window, manager: SpawnKeyManager) -> None:
+        super().__init__(
+            title=_("SpawnKey Diagnostics"),
+            transient_for=parent,
+            modal=True,
+            default_width=640,
+            default_height=460,
+        )
+        self._manager = manager
+        self._report_text = ""
+
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        root.set_margin_top(12)
+        root.set_margin_bottom(12)
+        root.set_margin_start(12)
+        root.set_margin_end(12)
+        self.set_child(root)
+
+        self._summary_label = Gtk.Label(label="", xalign=0.0)
+        self._summary_label.add_css_class("heading")
+        self._summary_label.set_wrap(True)
+        root.append(self._summary_label)
+
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_vexpand(True)
+        scrolled.set_has_frame(True)
+        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        root.append(scrolled)
+
+        self._list_box = Gtk.ListBox()
+        self._list_box.set_selection_mode(Gtk.SelectionMode.NONE)
+        scrolled.set_child(self._list_box)
+
+        footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self._copy_feedback = Gtk.Label(label="", xalign=0.0)
+        self._copy_feedback.add_css_class("dim-label")
+        self._copy_feedback.set_hexpand(True)
+        footer.append(self._copy_feedback)
+
+        btn_refresh = Gtk.Button(label=_("Refresh"))
+        btn_refresh.connect("clicked", lambda _b: self._populate())
+        btn_copy = Gtk.Button(label=_("Copy"))
+        btn_copy.connect("clicked", self._on_copy_clicked)
+        btn_close = Gtk.Button(label=_("Close"))
+        btn_close.add_css_class("suggested-action")
+        btn_close.connect("clicked", lambda _b: self.close())
+
+        footer.append(btn_refresh)
+        footer.append(btn_copy)
+        footer.append(btn_close)
+        root.append(footer)
+
+        self._populate()
+
+    def _populate(self) -> None:
+        while True:
+            row = self._list_box.get_row_at_index(0)
+            if row is None:
+                break
+            self._list_box.remove(row)
+
+        self._copy_feedback.set_text("")
+        items: list[DiagnosticItem] = self._manager.diagnose()
+
+        badge_labels = {
+            "ok": _("OK"),
+            "warn": _("WARN"),
+            "error": _("ERROR"),
+        }
+        badge_css = {
+            "ok": "spawnkey-badge-active",
+            "warn": "spawnkey-badge-warn",
+            "error": "spawnkey-badge-disabled",
+        }
+        counts = {"ok": 0, "warn": 0, "error": 0}
+        report_lines: list[str] = []
+
+        for level, check, detail in items:
+            norm = level.lower()
+            if norm not in counts:
+                norm = "warn"
+            counts[norm] += 1
+            badge_text = badge_labels[norm]
+            report_lines.append(f"[{badge_text}] {check}: {detail}")
+
+            row = Gtk.ListBoxRow()
+            outer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+            outer.set_margin_top(6)
+            outer.set_margin_bottom(6)
+            outer.set_margin_start(8)
+            outer.set_margin_end(8)
+
+            lbl_badge = Gtk.Label(label=badge_text)
+            lbl_badge.set_valign(Gtk.Align.START)
+            lbl_badge.add_css_class("spawnkey-badge")
+            lbl_badge.add_css_class(badge_css[norm])
+            outer.append(lbl_badge)
+
+            text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            text_box.set_hexpand(True)
+
+            lbl_check = Gtk.Label(label=check, xalign=0.0)
+            lbl_check.add_css_class("heading")
+            lbl_check.set_wrap(True)
+            text_box.append(lbl_check)
+
+            lbl_detail = Gtk.Label(label=detail, xalign=0.0)
+            lbl_detail.add_css_class("dim-label")
+            lbl_detail.set_wrap(True)
+            lbl_detail.set_selectable(True)
+            text_box.append(lbl_detail)
+
+            outer.append(text_box)
+            row.set_child(outer)
+            self._list_box.append(row)
+
+        summary = _("Summary: {ok} OK · {warn} WARN · {error} ERROR").format(
+            ok=counts["ok"],
+            warn=counts["warn"],
+            error=counts["error"],
+        )
+        self._summary_label.set_text(summary)
+        report_lines.append("")
+        report_lines.append(summary)
+        self._report_text = "\n".join(report_lines)
+
+    def _on_copy_clicked(self, _btn: Gtk.Button) -> None:
+        display = Gdk.Display.get_default()
+        if display is None:
+            self._copy_feedback.set_text(_("Clipboard unavailable."))
+            return
+        display.get_clipboard().set(self._report_text)
+        self._copy_feedback.set_text(_("Diagnostic report copied to clipboard."))
+
+
 class SpawnKeyWindow(Gtk.ApplicationWindow):
     """Compact two-pane GTK 4 window: managed dropdown list + tabbed profile editor."""
 
     def __init__(self, app: Gtk.Application, manager: SpawnKeyManager | None = None) -> None:
         super().__init__(
             application=app,
-            title="SpawnKey — Administrador de Dropdowns y Atajos",
+            title=_("SpawnKey — Dropdown & Shortcut Manager"),
             default_width=860,
             default_height=680,
         )
         _install_css()
         self._manager = manager or SpawnKeyManager()
-        self._monitor = self._resolve_gui_monitor(MonitorPolicy.CURSOR)
+        self._monitors, self._monitor = self._resolve_gui_monitors(MonitorPolicy.CURSOR)
 
         self._loading_form = False
         self._dirty = False
@@ -239,13 +395,31 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
 
         self._build_ui()
         self._refresh_list(select_first=True)
+        self.connect("map", self._on_window_mapped)
 
         if not self._manager.backend_available:
-            self._set_status(f"Aviso: {self._manager.backend_error}", error=True)
-        else:
             self._set_status(
-                f"Listo ({self._manager.env_info.backend.value} · monitor {self._monitor.width}×{self._monitor.height})"
+                _("Warning: {error}").format(error=self._manager.backend_error),
+                error=True,
             )
+        else:
+            caps = self._manager.capabilities
+            if caps.backend_hint:
+                self._set_status(f"{self._manager.env_info.backend.value} · {caps.backend_hint}")
+                self._status_label.set_tooltip_text(caps.backend_hint)
+            else:
+                self._set_status(
+                    _("Ready ({backend} · monitor {width}×{height})").format(
+                        backend=self._manager.env_info.backend.value,
+                        width=self._monitor.width,
+                        height=self._monitor.height,
+                    )
+                )
+
+    def _on_window_mapped(self, *_args) -> None:
+        policy = _MONITOR_POLICIES[self._dd_monitor_policy.get_selected()][0]
+        self._refresh_active_monitor(policy)
+        self._update_preview()
 
     def _build_ui(self) -> None:
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -277,6 +451,15 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         self._status_label.set_ellipsize(Pango.EllipsizeMode.END)
         self._status_label.add_css_class("dim-label")
         status_bar.append(self._status_label)
+
+        self._btn_diagnostics = Gtk.Button(label=_("Diagnostics"))
+        self._btn_diagnostics.add_css_class("flat")
+        self._btn_diagnostics.set_tooltip_text(
+            _("Inspect environment, compositor backend, scripts, and shortcut status")
+        )
+        self._btn_diagnostics.connect("clicked", self._on_diagnostics_clicked)
+        status_bar.append(self._btn_diagnostics)
+
         outer.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
         outer.append(status_bar)
 
@@ -288,12 +471,12 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         box.set_margin_end(10)
 
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        title = Gtk.Label(label="Perfiles", xalign=0.0)
+        title = Gtk.Label(label=_("Profiles"), xalign=0.0)
         title.set_hexpand(True)
         title.add_css_class("title-4")
 
-        # + Nuevo menu button with quick recipes
-        self._btn_new = Gtk.MenuButton(label="+ Nuevo")
+        # + New menu button with quick recipes
+        self._btn_new = Gtk.MenuButton(label=_("+ New"))
         self._btn_new.add_css_class("suggested-action")
         self._new_popover = self._build_new_recipe_popover()
         self._btn_new.set_popover(self._new_popover)
@@ -317,34 +500,42 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         self._orphan_label = Gtk.Label(label="", xalign=0.0)
         self._orphan_label.set_hexpand(True)
         self._orphan_label.set_wrap(True)
-        btn_clean = Gtk.Button(label="Limpiar")
+        btn_clean = Gtk.Button(label=_("Clean up"))
         btn_clean.connect("clicked", self._on_cleanup_orphans_clicked)
         self._orphan_box.append(self._orphan_label)
         self._orphan_box.append(btn_clean)
         self._orphan_box.set_visible(False)
         box.append(self._orphan_box)
 
-        # Compact 2x2 quick actions grid for selected dropdown
+        # Compact quick actions grid (profile actions + import/export)
         actions = Gtk.Grid(column_spacing=6, row_spacing=6)
         actions.set_column_homogeneous(True)
 
-        self._btn_list_test = Gtk.Button(label="Probar")
+        self._btn_list_test = Gtk.Button(label=_("Test"))
         self._btn_list_test.connect("clicked", self._on_test_clicked)
 
-        self._btn_list_duplicate = Gtk.Button(label="Duplicar")
+        self._btn_list_duplicate = Gtk.Button(label=_("Duplicate"))
         self._btn_list_duplicate.connect("clicked", self._on_duplicate_clicked)
 
-        self._btn_list_rm_shortcut = Gtk.Button(label="Quitar atajo")
+        self._btn_list_rm_shortcut = Gtk.Button(label=_("Remove shortcut"))
         self._btn_list_rm_shortcut.connect("clicked", self._on_remove_shortcut_only_clicked)
 
-        self._btn_list_delete = Gtk.Button(label="Eliminar")
+        self._btn_list_delete = Gtk.Button(label=_("Delete"))
         self._btn_list_delete.add_css_class("destructive-action")
         self._btn_list_delete.connect("clicked", self._on_delete_profile_clicked)
+
+        self._btn_import = Gtk.Button(label=_("Import..."))
+        self._btn_import.connect("clicked", self._on_import_clicked)
+
+        self._btn_export = Gtk.Button(label=_("Export..."))
+        self._btn_export.connect("clicked", self._on_export_clicked)
 
         actions.attach(self._btn_list_test, 0, 0, 1, 1)
         actions.attach(self._btn_list_duplicate, 1, 0, 1, 1)
         actions.attach(self._btn_list_rm_shortcut, 0, 1, 1, 1)
         actions.attach(self._btn_list_delete, 1, 1, 1, 1)
+        actions.attach(self._btn_import, 0, 2, 1, 1)
+        actions.attach(self._btn_export, 1, 2, 1, 1)
         box.append(actions)
 
         return box
@@ -358,10 +549,10 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         vbox.set_margin_end(6)
 
         recipes = [
-            ("blank", "Perfil vacío", "Valores iniciales por defecto"),
-            ("top_terminal", "Terminal superior", "Persistente · arriba · 85×45%"),
-            ("tray_panel", "Panel lateral de bandeja", "Bandeja · derecha · 38×82% · margen 8px"),
-            ("ephemeral_center", "Herramienta centrada", "Efímero · centro · 55×60% · fundido"),
+            ("blank", _("Blank profile"), _("Default initial settings")),
+            ("top_terminal", _("Top terminal"), _("Persistent · top · 85×45%")),
+            ("tray_panel", _("Tray side panel"), _("Tray · right · 38×82% · margin 8px")),
+            ("ephemeral_center", _("Centered tool"), _("Ephemeral · center · 55×60% · fade")),
         ]
         for key, title, subtitle in recipes:
             btn = Gtk.Button()
@@ -408,7 +599,11 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         wrapper.set_margin_end(12)
 
         # Compact live preview pinned at the top so changes are always visible
-        self._preview = PreviewWidget(self._monitor, on_custom_drag=self._on_preview_drag)
+        self._preview = PreviewWidget(
+            self._monitor,
+            on_custom_drag=self._on_preview_drag,
+            monitors=self._monitors,
+        )
         wrapper.append(self._preview)
 
         # Tabbed editor (Gtk.Stack + Gtk.StackSwitcher)
@@ -427,10 +622,10 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         scrolled.set_child(self._stack)
         wrapper.append(scrolled)
 
-        self._stack.add_titled(self._build_tab_app(), "app", "Aplicación")
-        self._stack.add_titled(self._build_tab_geometry(), "geometry", "Geometría")
-        self._stack.add_titled(self._build_tab_style(), "style", "Estilo")
-        self._stack.add_titled(self._build_tab_behavior(), "behavior", "Ventana y atajo")
+        self._stack.add_titled(self._build_tab_app(), "app", _("Application"))
+        self._stack.add_titled(self._build_tab_geometry(), "geometry", _("Geometry"))
+        self._stack.add_titled(self._build_tab_style(), "style", _("Style"))
+        self._stack.add_titled(self._build_tab_behavior(), "behavior", _("Window & shortcut"))
 
         # Footer buttons
         footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -438,10 +633,10 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         wrapper.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
         wrapper.append(footer)
 
-        self._btn_test = Gtk.Button(label="Probar ahora")
+        self._btn_test = Gtk.Button(label=_("Test now"))
         self._btn_test.connect("clicked", self._on_test_clicked)
 
-        self._btn_save = Gtk.Button(label="Guardar y aplicar")
+        self._btn_save = Gtk.Button(label=_("Save & apply"))
         self._btn_save.add_css_class("suggested-action")
         self._btn_save.connect("clicked", self._on_save_clicked)
 
@@ -460,45 +655,45 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         app_grid = Gtk.Grid(column_spacing=8, row_spacing=6)
         page.append(app_grid)
 
-        app_grid.attach(Gtk.Label(label="Nombre:", xalign=0.0), 0, 0, 1, 1)
+        app_grid.attach(Gtk.Label(label=_("Name:"), xalign=0.0), 0, 0, 1, 1)
         self._entry_name = Gtk.Entry()
         self._entry_name.set_hexpand(True)
-        self._entry_name.set_placeholder_text("Ej. Terminal rápida")
+        self._entry_name.set_placeholder_text(_("e.g. Quick terminal"))
         self._entry_name.connect("changed", self._on_form_edited)
         app_grid.attach(self._entry_name, 1, 0, 1, 1)
 
-        app_grid.attach(Gtk.Label(label="Comando:", xalign=0.0), 0, 1, 1, 1)
+        app_grid.attach(Gtk.Label(label=_("Command:"), xalign=0.0), 0, 1, 1, 1)
         self._entry_exec = Gtk.Entry()
         self._entry_exec.set_hexpand(True)
-        self._entry_exec.set_placeholder_text("Ej. alacritty o /ruta/al/binario")
+        self._entry_exec.set_placeholder_text(_("e.g. alacritty or /path/to/binary"))
         self._entry_exec.connect("changed", self._on_exec_manual_changed)
         app_grid.attach(self._entry_exec, 1, 1, 1, 1)
 
         picker_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        btn_menu_app = Gtk.Button(label="App instalada...")
+        btn_menu_app = Gtk.Button(label=_("Installed app..."))
         btn_menu_app.connect("clicked", self._on_pick_desktop_app)
-        btn_exec_file = Gtk.Button(label="Ejecutable...")
+        btn_exec_file = Gtk.Button(label=_("Executable..."))
         btn_exec_file.connect("clicked", self._on_pick_executable_file)
         picker_row.append(btn_menu_app)
         picker_row.append(btn_exec_file)
         app_grid.attach(picker_row, 1, 2, 1, 1)
 
-        app_grid.attach(Gtk.Label(label="Argumentos:", xalign=0.0), 0, 3, 1, 1)
+        app_grid.attach(Gtk.Label(label=_("Arguments:"), xalign=0.0), 0, 3, 1, 1)
         self._entry_extra_args = Gtk.Entry()
         self._entry_extra_args.set_hexpand(True)
-        self._entry_extra_args.set_placeholder_text("Argumentos opcionales al lanzar")
+        self._entry_extra_args.set_placeholder_text(_("Optional launch arguments"))
         self._entry_extra_args.connect("changed", self._on_form_edited)
         app_grid.attach(self._entry_extra_args, 1, 3, 1, 1)
 
-        app_grid.attach(Gtk.Label(label="Clase de ventana:", xalign=0.0), 0, 4, 1, 1)
+        app_grid.attach(Gtk.Label(label=_("Window class:"), xalign=0.0), 0, 4, 1, 1)
         self._entry_match_hint = Gtk.Entry()
         self._entry_match_hint.set_hexpand(True)
-        self._entry_match_hint.set_placeholder_text("WM_CLASS o app_id (opcional)")
+        self._entry_match_hint.set_placeholder_text(_("WM_CLASS or app_id (optional)"))
         self._entry_match_hint.connect("changed", self._on_match_hint_changed)
         app_grid.attach(self._entry_match_hint, 1, 4, 1, 1)
 
         # Lifecycle mode with wrapped subtitle labels (zero horizontal overflow)
-        page.append(self._section_label("Ciclo de vida"))
+        page.append(self._section_label(_("Lifecycle")))
         mode_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         page.append(mode_box)
 
@@ -532,9 +727,9 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         dim_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         page.append(dim_box)
 
-        self._dd_unit = Gtk.DropDown.new_from_strings(["Porcentaje (%)", "Píxeles (px)"])
+        self._dd_unit = Gtk.DropDown.new_from_strings([_("Percent (%)"), _("Pixels (px)")])
         self._dd_unit.connect("notify::selected", self._on_unit_changed)
-        dim_box.append(self._pair_box("Unidad de tamaño:", self._dd_unit))
+        dim_box.append(self._pair_box(_("Size unit:"), self._dd_unit))
 
         size_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
         size_row.set_halign(Gtk.Align.START)
@@ -544,19 +739,21 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         self._spin_height = Gtk.SpinButton.new_with_range(1, 99, 1)
         self._spin_height.set_value(45)
         self._spin_height.connect("value-changed", self._on_geometry_changed)
-        size_row.append(self._pair_box("Ancho:", self._spin_width))
-        size_row.append(self._pair_box("Alto:", self._spin_height))
+        size_row.append(self._pair_box(_("Width:"), self._spin_width))
+        size_row.append(self._pair_box(_("Height:"), self._spin_height))
         dim_box.append(size_row)
 
-        self._dd_monitor_policy = Gtk.DropDown.new_from_strings([lbl for _, lbl in _MONITOR_POLICIES])
+        self._dd_monitor_policy = Gtk.DropDown.new_from_strings(
+            [_(lbl) for _policy, lbl in _MONITOR_POLICIES]
+        )
         self._dd_monitor_policy.connect("notify::selected", self._on_monitor_policy_changed)
-        dim_box.append(self._pair_box("Monitor:", self._dd_monitor_policy))
+        dim_box.append(self._pair_box(_("Display:"), self._dd_monitor_policy))
 
         # Position mode switch: 3x3 preset vs custom
-        page.append(self._section_label("Posición"))
+        page.append(self._section_label(_("Position")))
         pos_mode_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        self._radio_pos_preset = Gtk.CheckButton(label="Cuadrícula 3×3")
-        self._radio_pos_custom = Gtk.CheckButton(label="Coordenadas (X, Y)")
+        self._radio_pos_preset = Gtk.CheckButton(label=_("3×3 grid"))
+        self._radio_pos_custom = Gtk.CheckButton(label=_("Coordinates (X, Y)"))
         self._radio_pos_custom.set_group(self._radio_pos_preset)
         self._radio_pos_preset.set_active(True)
         self._radio_pos_preset.connect("toggled", self._on_position_mode_toggled)
@@ -571,7 +768,7 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         self._anchor_grid.set_row_homogeneous(True)
         for idx, (av, ah, symbol, tooltip) in enumerate(_ANCHOR_GRID):
             btn = Gtk.ToggleButton(label=symbol)
-            btn.set_tooltip_text(tooltip)
+            btn.set_tooltip_text(_(tooltip))
             btn.set_size_request(40, 32)
             btn.connect("toggled", self._on_anchor_button_toggled, av, ah)
             self._anchor_buttons[(av, ah)] = btn
@@ -585,22 +782,22 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         self._spin_edge_margin.set_value(0)
         self._spin_edge_margin.connect("value-changed", self._on_geometry_changed)
         lbl_margin_hint = Gtk.Label(
-            label="Separa la ventana del borde del monitor en posiciones laterales.",
+            label=_("Offsets the window from the screen edge in edge-aligned positions."),
             xalign=0.0,
         )
         lbl_margin_hint.set_wrap(True)
         lbl_margin_hint.add_css_class("dim-label")
         lbl_margin_hint.add_css_class("caption")
-        margin_box.append(self._pair_box("Margen al borde (px):", self._spin_edge_margin))
+        margin_box.append(self._pair_box(_("Edge margin (px):"), self._spin_edge_margin))
         margin_box.append(lbl_margin_hint)
         self._preset_pos_box.append(margin_box)
         page.append(self._preset_pos_box)
 
         # Custom X, Y coordinates with independent custom_position_unit
         self._custom_pos_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        self._dd_custom_unit = Gtk.DropDown.new_from_strings(["Porcentaje (%)", "Píxeles (px)"])
+        self._dd_custom_unit = Gtk.DropDown.new_from_strings([_("Percent (%)"), _("Pixels (px)")])
         self._dd_custom_unit.connect("notify::selected", self._on_custom_unit_changed)
-        self._custom_pos_box.append(self._pair_box("Unidad de posición:", self._dd_custom_unit))
+        self._custom_pos_box.append(self._pair_box(_("Position unit:"), self._dd_custom_unit))
 
         xy_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
         xy_row.set_halign(Gtk.Align.START)
@@ -608,8 +805,8 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         self._spin_custom_x.connect("value-changed", self._on_geometry_changed)
         self._spin_custom_y = Gtk.SpinButton.new_with_range(0, 99, 1)
         self._spin_custom_y.connect("value-changed", self._on_geometry_changed)
-        xy_row.append(self._pair_box("X:", self._spin_custom_x))
-        xy_row.append(self._pair_box("Y:", self._spin_custom_y))
+        xy_row.append(self._pair_box(_("X:"), self._spin_custom_x))
+        xy_row.append(self._pair_box(_("Y:"), self._spin_custom_y))
         self._custom_pos_box.append(xy_row)
 
         self._custom_pos_box.set_visible(False)
@@ -622,22 +819,22 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         page.set_margin_top(6)
         page.set_margin_end(4)
 
-        page.append(self._section_label("Animación"))
+        page.append(self._section_label(_("Animation")))
         anim_select_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
         anim_select_row.set_halign(Gtk.Align.START)
 
-        self._dd_direction = Gtk.DropDown.new_from_strings([lbl for _, lbl in _DIRECTIONS])
+        self._dd_direction = Gtk.DropDown.new_from_strings([_(lbl) for _dir, lbl in _DIRECTIONS])
         self._dd_direction.connect("notify::selected", self._on_geometry_changed)
-        anim_select_row.append(self._pair_box("Entra desde:", self._dd_direction))
+        anim_select_row.append(self._pair_box(_("Slide from:"), self._dd_direction))
 
-        self._dd_animation = Gtk.DropDown.new_from_strings([lbl for _, lbl in _ANIMATIONS])
+        self._dd_animation = Gtk.DropDown.new_from_strings([_(lbl) for _anim, lbl in _ANIMATIONS])
         self._dd_animation.set_selected(2)  # slide-fade
         self._dd_animation.connect("notify::selected", self._on_animation_type_changed)
-        anim_select_row.append(self._pair_box("Efecto:", self._dd_animation))
+        anim_select_row.append(self._pair_box(_("Effect:"), self._dd_animation))
         page.append(anim_select_row)
 
         dur_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        lbl_dur = Gtk.Label(label="Duración:", xalign=0.0)
+        lbl_dur = Gtk.Label(label=_("Duration:"), xalign=0.0)
         # Full model range: 0.1 to 5.0
         self._scale_anim = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0.1, 5.0, 0.1)
         self._scale_anim.set_value(1.0)
@@ -651,9 +848,9 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         dur_row.append(self._lbl_scale_value)
         page.append(dur_row)
 
-        page.append(self._section_label("Apariencia"))
+        page.append(self._section_label(_("Appearance")))
         row_opacity = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        lbl_opacity = Gtk.Label(label="Opacidad:", xalign=0.0)
+        lbl_opacity = Gtk.Label(label=_("Opacity:"), xalign=0.0)
         self._scale_opacity = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0.1, 1.0, 0.05)
         self._scale_opacity.set_value(1.0)
         self._scale_opacity.set_hexpand(True)
@@ -669,7 +866,7 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         self._spin_corner_radius = Gtk.SpinButton.new_with_range(0, 50, 1)
         self._spin_corner_radius.set_value(0)
         self._spin_corner_radius.connect("value-changed", self._on_geometry_changed)
-        page.append(self._pair_box("Esquinas redondeadas (px):", self._spin_corner_radius))
+        page.append(self._pair_box(_("Rounded corners (px):"), self._spin_corner_radius))
 
         self._lbl_corner_hint = Gtk.Label(label="", xalign=0.0)
         self._lbl_corner_hint.set_wrap(True)
@@ -678,7 +875,7 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         page.append(self._lbl_corner_hint)
 
         lbl_border = Gtk.Label(
-            label="Sin barra de título ni bordes del sistema (siempre activo).",
+            label=_("No titlebar or system borders (always enabled)."),
             xalign=0.0,
         )
         lbl_border.set_wrap(True)
@@ -692,7 +889,7 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         page.set_margin_top(6)
         page.set_margin_end(4)
 
-        page.append(self._section_label("Comportamiento"))
+        page.append(self._section_label(_("Behavior")))
         beh_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         page.append(beh_box)
 
@@ -711,24 +908,34 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
             return sw
 
         self._sw_click_outside = _make_switch_row(
-            "Ocultar al hacer clic fuera de la ventana", True
+            _("Hide when clicking outside window"), True
         )
         self._sw_keep_above = _make_switch_row(
-            "Mantener siempre encima de otras ventanas", True
+            _("Keep always on top of other windows"), True
         )
         self._sw_taskbar = _make_switch_row(
-            "Mostrar en la barra de tareas", False
+            _("Show in taskbar"), False
+        )
+        self._sw_relocate_on_toggle = _make_switch_row(
+            _("Relocate/focus on current monitor instead of hiding"), True
+        )
+        self._sw_relocate_on_toggle.set_tooltip_text(
+            _(
+                "When monitor policy is cursor or focused, pressing the shortcut moves or focuses the open dropdown instead of hiding it."
+            )
         )
 
         self._spin_startup_timeout = Gtk.SpinButton.new_with_range(1000, 60000, 500)
         self._spin_startup_timeout.set_value(8000)
         self._spin_startup_timeout.set_tooltip_text(
-            "Tiempo máximo para capturar la ventana nueva en arranques lentos (Flatpak, Electron, Java)"
+            _(
+                "Maximum wait time to capture the new window on slow startups (Flatpak, Electron, Java)"
+            )
         )
         self._spin_startup_timeout.connect("value-changed", self._on_form_edited)
-        beh_box.append(self._pair_box("Espera de arranque (ms):", self._spin_startup_timeout))
+        beh_box.append(self._pair_box(_("Startup timeout (ms):"), self._spin_startup_timeout))
 
-        page.append(self._section_label("Atajo global"))
+        page.append(self._section_label(_("Global shortcut")))
         sc_widget, self._set_shortcut_text, self._get_shortcut_text = build_shortcut_capture_widget(
             self._on_shortcut_text_changed
         )
@@ -740,14 +947,14 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         self._lbl_conflict_warn.set_visible(False)
         page.append(self._lbl_conflict_warn)
 
-        self._sw_shortcut_enabled = _make_switch_row("Registrar atajo en el escritorio", True)
+        self._sw_shortcut_enabled = _make_switch_row(_("Register shortcut on desktop"), True)
         self._sw_shortcut_enabled.connect("notify::active", lambda *_a: self._check_shortcut_conflicts())
 
         return page
 
     def _apply_backend_capabilities(self) -> None:
         if not self._manager.backend_available:
-            self._lbl_corner_hint.set_text("Best-effort (sin backend activo detectado)")
+            self._lbl_corner_hint.set_text(_("Best-effort (no active backend detected)"))
             return
 
         caps = self._manager.capabilities
@@ -756,30 +963,46 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         self._scale_opacity.set_sensitive(caps.supports_opacity)
         if not caps.supports_opacity:
             self._scale_opacity.set_tooltip_text(
-                f"El backend activo ({backend_name}) no soporta opacidad por ventana."
+                _("The active backend ({backend}) does not support per-window opacity.").format(
+                    backend=backend_name
+                )
             )
 
         self._spin_corner_radius.set_sensitive(caps.supports_corner_radius)
         if caps.supports_corner_radius:
-            self._lbl_corner_hint.set_text(f"Soportado por {backend_name}")
+            self._lbl_corner_hint.set_text(_("Supported by {backend}").format(backend=backend_name))
+            self._spin_corner_radius.set_tooltip_text(None)
+        elif caps.corner_radius_hint:
+            self._lbl_corner_hint.set_text(caps.corner_radius_hint)
+            self._spin_corner_radius.set_tooltip_text(caps.corner_radius_hint)
         else:
             self._lbl_corner_hint.set_text(
-                f"No soportado por el backend activo ({backend_name})"
+                _("Not supported by the active backend ({backend})").format(backend=backend_name)
             )
             self._spin_corner_radius.set_tooltip_text(
-                f"El backend activo ({backend_name}) no permite forzar esquinas redondeadas."
+                _("The active backend ({backend}) cannot enforce rounded corners.").format(
+                    backend=backend_name
+                )
             )
 
         self._sw_click_outside.set_sensitive(caps.supports_click_outside)
         if not caps.supports_click_outside:
             self._sw_click_outside.set_tooltip_text(
-                f"El backend activo ({backend_name}) no soporta ocultar al hacer clic fuera."
+                _("The active backend ({backend}) does not support hiding on outside click.").format(
+                    backend=backend_name
+                )
             )
 
         if not caps.supports_animations:
             self._dd_direction.set_sensitive(False)
             self._dd_animation.set_sensitive(False)
             self._scale_anim.set_sensitive(False)
+
+        if caps.backend_hint:
+            if hasattr(self, "_status_label"):
+                self._status_label.set_tooltip_text(caps.backend_hint)
+            if not self._lbl_corner_hint.get_tooltip_text():
+                self._lbl_corner_hint.set_tooltip_text(caps.backend_hint)
 
     # ------------------------------------------------------------------
     # State, dirty tracking & list synchronization
@@ -793,15 +1016,21 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
     def _on_form_edited(self, *_args) -> None:
         self._mark_dirty()
 
-    def _confirm_discard_if_dirty(self, on_proceed: Callable[[], None], on_cancel: Callable[[], None] | None = None) -> None:
+    def _confirm_discard_if_dirty(
+        self,
+        on_proceed: Callable[[], None],
+        on_cancel: Callable[[], None] | None = None,
+    ) -> None:
         if not self._dirty:
             on_proceed()
             return
 
         dlg = Gtk.AlertDialog(
-            message="Hay cambios sin guardar",
-            detail="Si continúas sin guardar, se perderán las modificaciones actuales de este perfil.",
-            buttons=["Cancelar", "Descartar cambios"],
+            message=_("Unsaved changes"),
+            detail=_(
+                "If you continue without saving, your current changes to this profile will be lost."
+            ),
+            buttons=[_("Cancel"), _("Discard changes")],
             cancel_button=0,
             default_button=0,
         )
@@ -828,11 +1057,19 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
             shortcut,
             exclude_profile_id=self._current_id,
         )
+        sys_conflicts = self._manager.find_system_shortcut_conflicts(shortcut)
+        messages: list[str] = []
         if conflicts:
             names = ", ".join(c.name for c in conflicts)
-            self._lbl_conflict_warn.set_text(
-                f"Conflicto: este atajo ya está asignado a {names}."
+            messages.append(_("Conflict with profile(s): {names}.").format(names=names))
+        if sys_conflicts:
+            messages.append(
+                _("Desktop shortcut collision: {details}.").format(
+                    details="; ".join(sys_conflicts)
+                )
             )
+        if messages:
+            self._lbl_conflict_warn.set_text(" ".join(messages))
             self._lbl_conflict_warn.set_visible(True)
         else:
             self._lbl_conflict_warn.set_visible(False)
@@ -897,7 +1134,13 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
 
         orphans = self._manager.list_orphaned_shortcuts()
         if orphans:
-            self._orphan_label.set_text(f"{len(orphans)} atajo(s) huérfano(s)")
+            self._orphan_label.set_text(
+                ngettext(
+                    "{count} orphaned shortcut",
+                    "{count} orphaned shortcuts",
+                    len(orphans),
+                ).format(count=len(orphans))
+            )
             self._orphan_box.set_visible(True)
         else:
             self._orphan_box.set_visible(False)
@@ -921,9 +1164,9 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         lbl_name.set_ellipsize(Pango.EllipsizeMode.END)
         lbl_name.add_css_class("heading")
         mode_badges = {
-            LifecycleMode.PERSISTENT: "Persist.",
-            LifecycleMode.EPHEMERAL: "Efímero",
-            LifecycleMode.TRAY: "Bandeja",
+            LifecycleMode.PERSISTENT: _("Persist."),
+            LifecycleMode.EPHEMERAL: _("Ephemeral"),
+            LifecycleMode.TRAY: _("Tray"),
         }
         lbl_mode = Gtk.Label(label=mode_badges[p.mode])
         lbl_mode.add_css_class("dim-label")
@@ -932,14 +1175,14 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         top.append(lbl_mode)
 
         bottom = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        shortcut_text = p.shortcut or "(sin atajo)"
+        shortcut_text = p.shortcut or _("(no shortcut)")
         lbl_sc = Gtk.Label(label=shortcut_text, xalign=0.0)
         lbl_sc.set_hexpand(True)
         lbl_sc.set_ellipsize(Pango.EllipsizeMode.END)
         lbl_sc.add_css_class("dim-label")
         lbl_sc.add_css_class("caption")
 
-        lbl_status = Gtk.Label(label=_STATUS_LABELS[entry.shortcut_status])
+        lbl_status = Gtk.Label(label=_(_STATUS_LABELS[entry.shortcut_status]))
         lbl_status.add_css_class("spawnkey-badge")
         lbl_status.add_css_class(_STATUS_CSS[entry.shortcut_status])
 
@@ -956,10 +1199,12 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
             self._current_id is not None
             and self._manager.store.get_profile(self._current_id) is not None
         )
+        has_any = self._list_box.get_row_at_index(0) is not None
         self._btn_list_test.set_sensitive(has_existing and self._manager.backend_available)
         self._btn_list_duplicate.set_sensitive(has_existing)
         self._btn_list_rm_shortcut.set_sensitive(has_existing)
         self._btn_list_delete.set_sensitive(has_existing)
+        self._btn_export.set_sensitive(has_any)
         self._btn_test.set_sensitive(has_existing and self._manager.backend_available)
 
     def _load_new_blank_form(self, recipe: str = "blank") -> None:
@@ -994,6 +1239,7 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
             self._sw_click_outside.set_active(True)
             self._sw_keep_above.set_active(True)
             self._sw_taskbar.set_active(False)
+            self._sw_relocate_on_toggle.set_active(True)
             self._spin_startup_timeout.set_value(8000)
             self._scale_opacity.set_value(1.0)
             self._lbl_opacity_value.set_text("100%")
@@ -1002,7 +1248,7 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
             self._sw_shortcut_enabled.set_active(True)
 
             if recipe == "top_terminal":
-                self._entry_name.set_text("Terminal rápida")
+                self._entry_name.set_text(_("Quick terminal"))
                 self._radio_persistent.set_active(True)
                 self._spin_width.set_value(85)
                 self._spin_height.set_value(45)
@@ -1010,7 +1256,7 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
                 self._dd_direction.set_selected(0)  # top
                 self._dd_animation.set_selected(0)  # slide
             elif recipe == "tray_panel":
-                self._entry_name.set_text("Panel lateral")
+                self._entry_name.set_text(_("Side panel"))
                 self._radio_tray.set_active(True)
                 self._spin_width.set_value(38)
                 self._spin_height.set_value(82)
@@ -1019,7 +1265,7 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
                 self._dd_direction.set_selected(3)  # right
                 self._dd_animation.set_selected(2)  # slide-fade
             elif recipe == "ephemeral_center":
-                self._entry_name.set_text("Utilidad rápida")
+                self._entry_name.set_text(_("Quick utility"))
                 self._radio_ephemeral.set_active(True)
                 self._spin_width.set_value(55)
                 self._spin_height.set_value(60)
@@ -1029,6 +1275,7 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
             self._loading_form = False
 
         self._dirty = recipe != "blank"
+        self._refresh_active_monitor(MonitorPolicy.CURSOR)
         self._check_shortcut_conflicts()
         self._update_animation_scale_state()
         self._update_preview()
@@ -1042,7 +1289,9 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
             self._current_desktop_id = profile.desktop_id
             self._current_match_hint = profile.match_hint
 
-            self._entry_name.set_text(f"{profile.name} (copia)" if as_copy else profile.name)
+            self._entry_name.set_text(
+                _("{name} (copy)").format(name=profile.name) if as_copy else profile.name
+            )
             self._entry_exec.set_text(profile.exec_cmd)
             self._entry_extra_args.set_text(profile.extra_args)
             self._entry_match_hint.set_text(profile.match_hint)
@@ -1094,6 +1343,7 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
             self._sw_click_outside.set_active(profile.hide_on_click_outside)
             self._sw_keep_above.set_active(profile.keep_above)
             self._sw_taskbar.set_active(profile.show_in_taskbar)
+            self._sw_relocate_on_toggle.set_active(profile.relocate_on_toggle)
             self._spin_startup_timeout.set_value(profile.startup_timeout_ms)
             self._scale_opacity.set_value(profile.opacity)
             self._lbl_opacity_value.set_text(f"{round(profile.opacity * 100)}%")
@@ -1151,7 +1401,7 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         name = self._entry_name.get_text().strip()
         exec_cmd = self._entry_exec.get_text().strip()
         if not strict:
-            name = name or "Vista previa"
+            name = name or _("Preview")
             exec_cmd = exec_cmd or "true"
 
         profile_id = self._current_id or self._manager.store.ensure_unique_id(name or "dropdown")
@@ -1192,6 +1442,7 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
             custom_x=float(self._spin_custom_x.get_value()),
             custom_y=float(self._spin_custom_y.get_value()),
             monitor_policy=monitor_policy,
+            relocate_on_toggle=self._sw_relocate_on_toggle.get_active(),
             borderless=True,
             hide_on_click_outside=self._sw_click_outside.get_active(),
             show_in_taskbar=self._sw_taskbar.get_active(),
@@ -1210,26 +1461,44 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         enabled = anim_type is not AnimationType.NONE
         self._scale_anim.set_sensitive(enabled)
         if not enabled:
-            self._lbl_scale_value.set_text("Sin animación")
+            self._lbl_scale_value.set_text(_("No animation"))
         else:
             scale = round(float(self._scale_anim.get_value()), 1)
             draft = self._build_draft_profile(strict=False)
             ms = compute_animation_duration_ms(draft)
             self._lbl_scale_value.set_text(f"{ms} ms ({scale:.1f}×)")
 
-    def _resolve_gui_monitor(self, policy: MonitorPolicy) -> MonitorRect:
-        gdk_mon = query_gdk_monitor(policy, window=self)
-        if gdk_mon is not None:
-            return gdk_mon
+    def _resolve_gui_monitors(self, policy: MonitorPolicy) -> tuple[list[MonitorRect], MonitorRect]:
+        surface = None
+        if hasattr(self, "get_surface"):
+            try:
+                surface = self.get_surface()
+            except Exception:
+                surface = None
+        monitors, primary_idx, focused_idx = detect_gdk_monitors(surface=surface)
+        if monitors:
+            active = select_monitor_by_policy(
+                monitors,
+                policy,
+                primary_index=primary_idx,
+                focused_index=focused_idx,
+            )
+            return monitors, active
         ref = DropdownProfile(id="ref", name="Ref", exec_cmd="true", monitor_policy=policy)
-        return self._manager.get_active_monitor(ref)
+        fallback = self._manager.get_active_monitor(ref)
+        return [fallback], fallback
+
+    def _resolve_gui_monitor(self, policy: MonitorPolicy) -> MonitorRect:
+        _monitors, active = self._resolve_gui_monitors(policy)
+        return active
 
     def _refresh_active_monitor(self, policy: MonitorPolicy) -> None:
-        new_mon = self._resolve_gui_monitor(policy)
-        if new_mon != self._monitor:
-            self._monitor = new_mon
-            if hasattr(self, "_preview"):
-                self._preview.set_monitor(self._monitor)
+        monitors, new_mon = self._resolve_gui_monitors(policy)
+        changed = (new_mon != self._monitor) or (monitors != self._monitors)
+        self._monitors = monitors
+        self._monitor = new_mon
+        if changed and hasattr(self, "_preview"):
+            self._preview.set_monitors(self._monitors, self._monitor)
 
     def _on_monitor_policy_changed(self, *_args) -> None:
         if self._loading_form:
@@ -1249,6 +1518,127 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
     # ------------------------------------------------------------------
     # Event handlers
     # ------------------------------------------------------------------
+
+    def _on_diagnostics_clicked(self, _btn: Gtk.Button) -> None:
+        dialog = _DiagnosticsDialog(self, self._manager)
+        dialog.present()
+
+    def _on_export_clicked(self, _btn: Gtk.Button) -> None:
+        selected_id = (
+            self._current_id
+            if (
+                self._current_id is not None
+                and self._manager.store.get_profile(self._current_id) is not None
+            )
+            else None
+        )
+        if selected_id is None:
+            if not self._manager.store.list_profiles():
+                self._set_status(_("No profiles to export."), error=True)
+                return
+            self._open_export_file_dialog(profile_ids=None)
+            return
+
+        dlg = Gtk.AlertDialog(
+            message=_("Export profiles"),
+            detail=_("Choose whether to export only the selected profile or all saved profiles."),
+            buttons=[_("Cancel"), _("Export selected"), _("Export all")],
+            cancel_button=0,
+            default_button=2,
+        )
+
+        def _on_choice(dialog: Gtk.AlertDialog, result: Gio.AsyncResult) -> None:
+            try:
+                choice = dialog.choose_finish(result)
+            except Exception:
+                return
+            if choice == 1:
+                self._open_export_file_dialog(profile_ids=[selected_id])
+            elif choice == 2:
+                self._open_export_file_dialog(profile_ids=None)
+
+        dlg.choose(self, None, _on_choice)
+
+    def _open_export_file_dialog(self, profile_ids: list[str] | None) -> None:
+        dialog = Gtk.FileDialog(title=_("Export profiles"))
+        dialog.set_initial_name("spawnkey-profiles.json")
+        filters, json_filter = _make_json_file_filters()
+        dialog.set_filters(filters)
+        dialog.set_default_filter(json_filter)
+
+        def _on_save_done(dlg: Gtk.FileDialog, result: Gio.AsyncResult) -> None:
+            try:
+                gfile = dlg.save_finish(result)
+            except Exception:
+                return
+            if gfile is None:
+                return
+            path_str = gfile.get_path()
+            if not path_str:
+                return
+            out_path = Path(path_str)
+            try:
+                self._manager.export_profiles_to_file(out_path, profile_ids=profile_ids)
+            except Exception as exc:
+                self._set_status(_("Export failed: {error}").format(error=exc), error=True)
+                return
+            self._set_status(_("Exported profiles to {path}.").format(path=out_path))
+
+        dialog.save(self, None, _on_save_done)
+
+    def _on_import_clicked(self, _btn: Gtk.Button) -> None:
+        def _open_import() -> None:
+            dialog = Gtk.FileDialog(title=_("Import profiles"))
+            filters, json_filter = _make_json_file_filters()
+            dialog.set_filters(filters)
+            dialog.set_default_filter(json_filter)
+
+            def _on_open_done(dlg: Gtk.FileDialog, result: Gio.AsyncResult) -> None:
+                try:
+                    gfile = dlg.open_finish(result)
+                except Exception:
+                    return
+                if gfile is None:
+                    return
+                path_str = gfile.get_path()
+                if not path_str:
+                    return
+                try:
+                    res = self._manager.import_profiles_from_file(
+                        Path(path_str),
+                        overwrite=True,
+                        register_shortcuts=True,
+                    )
+                except Exception as exc:
+                    self._set_status(_("Import failed: {error}").format(error=exc), error=True)
+                    return
+
+                self._dirty = False
+                first_id = (res.imported + res.updated + [None])[0]
+                if first_id is not None:
+                    self._refresh_list(select_id=first_id)
+                else:
+                    self._refresh_list(select_id=self._current_id)
+
+                summary = _(
+                    "Import complete: {imported} imported, {updated} updated, {skipped} skipped."
+                ).format(
+                    imported=len(res.imported),
+                    updated=len(res.updated),
+                    skipped=len(res.skipped),
+                )
+                if res.warnings:
+                    warn_text = "; ".join(res.warnings)
+                    full_msg = f"{summary} " + _("Warnings: {warnings}").format(warnings=warn_text)
+                    self._set_status(full_msg, error=True)
+                    self._status_label.set_tooltip_text(full_msg)
+                else:
+                    self._set_status(summary)
+                    self._status_label.set_tooltip_text(summary)
+
+            dialog.open(self, None, _on_open_done)
+
+        self._confirm_discard_if_dirty(_open_import)
 
     def _on_row_selected(self, _lb: Gtk.ListBox, row: Gtk.ListBoxRow | None) -> None:
         if self._suppress_row_select or row is None:
@@ -1276,7 +1666,7 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
             self._load_new_blank_form(recipe=recipe)
             self._stack.set_visible_child_name("app")
             self._entry_name.grab_focus()
-            self._set_status("Creando nuevo dropdown...")
+            self._set_status(_("Creating new dropdown..."))
 
         self._confirm_discard_if_dirty(_start_new)
 
@@ -1296,7 +1686,9 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
             self._load_profile_into_form(source, as_copy=True)
             self._stack.set_visible_child_name("app")
             self._entry_name.grab_focus()
-            self._set_status(f"Duplicado '{source.name}'. Asigna un atajo y guarda.")
+            self._set_status(
+                _("Duplicated '{name}'. Assign a shortcut and save.").format(name=source.name)
+            )
 
         self._confirm_discard_if_dirty(_do_duplicate)
 
@@ -1337,14 +1729,20 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
             finally:
                 self._loading_form = False
             self._mark_dirty()
-            suffix = " [Terminal]" if app.terminal else ""
-            self._set_status(f"Aplicación elegida: {app.name} ({app.desktop_id}){suffix}")
+            suffix = _(" [Terminal]") if app.terminal else ""
+            self._set_status(
+                _("Selected application: {name} ({desktop_id}){suffix}").format(
+                    name=app.name,
+                    desktop_id=app.desktop_id,
+                    suffix=suffix,
+                )
+            )
 
         dialog = AppPickerDialog(self, _picked)
         dialog.present()
 
     def _on_pick_executable_file(self, _btn: Gtk.Button) -> None:
-        dialog = Gtk.FileDialog(title="Elegir archivo ejecutable")
+        dialog = Gtk.FileDialog(title=_("Select executable file"))
 
         def _on_done(dlg: Gtk.FileDialog, result: Gio.AsyncResult) -> None:
             try:
@@ -1368,7 +1766,7 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
             finally:
                 self._loading_form = False
             self._mark_dirty()
-            self._set_status(f"Ejecutable seleccionado: {path_str}")
+            self._set_status(_("Selected executable: {path}").format(path=path_str))
 
         dialog.open(self, None, _on_done)
 
@@ -1486,28 +1884,38 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
             )
             saved, shortcut_msg = self._manager.save_profile(profile, sync_shortcut=True)
         except Exception as exc:
-            self._set_status(f"Error: {exc}", error=True)
+            self._set_status(_("Error: {error}").format(error=exc), error=True)
             return
 
         self._dirty = False
         self._current_id = saved.id
         self._refresh_list(select_id=saved.id)
         conflict_note = (
-            f" (Aviso: atajo compartido con {', '.join(c.name for c in conflicts)})"
+            _(" (Warning: shortcut shared with {names})").format(
+                names=", ".join(c.name for c in conflicts)
+            )
             if conflicts
             else ""
         )
-        self._set_status(f"Guardado '{saved.name}'. {shortcut_msg}{conflict_note}".strip())
+        self._set_status(
+            _("Saved '{name}'. {shortcut_msg}{conflict_note}")
+            .format(
+                name=saved.name,
+                shortcut_msg=shortcut_msg,
+                conflict_note=conflict_note,
+            )
+            .strip()
+        )
 
     def _on_test_clicked(self, _btn: Gtk.Button) -> None:
         if not self._current_id:
-            self._set_status("Guarda primero el dropdown para probarlo.", error=True)
+            self._set_status(_("Save the dropdown first to test it."), error=True)
             return
         try:
             self._manager.test_profile(self._current_id)
-            self._set_status(f"Alternado dropdown '{self._current_id}'.")
+            self._set_status(_("Toggled dropdown '{id}'.").format(id=self._current_id))
         except Exception as exc:
-            self._set_status(f"Error al probar: {exc}", error=True)
+            self._set_status(_("Test failed: {error}").format(error=exc), error=True)
 
     def _on_remove_shortcut_only_clicked(self, _btn: Gtk.Button) -> None:
         if not self._current_id:
@@ -1515,13 +1923,20 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         try:
             removed = self._manager.remove_shortcut_only(self._current_id, keep_keys=False)
         except Exception as exc:
-            self._set_status(f"Error al remover atajo: {exc}", error=True)
+            self._set_status(
+                _("Failed to remove shortcut: {error}").format(error=exc),
+                error=True,
+            )
             return
 
         pid = self._current_id
         self._dirty = False
         self._refresh_list(select_id=pid)
-        msg = "Atajo removido del sistema." if removed else "El perfil ya no tenía atajo registrado."
+        msg = (
+            _("Shortcut removed from system.")
+            if removed
+            else _("Profile already had no registered shortcut.")
+        )
         self._set_status(msg)
 
     def _on_delete_profile_clicked(self, _btn: Gtk.Button) -> None:
@@ -1531,18 +1946,32 @@ class SpawnKeyWindow(Gtk.ApplicationWindow):
         try:
             result = self._manager.delete_profile(pid)
         except Exception as exc:
-            self._set_status(f"Error al eliminar: {exc}", error=True)
+            self._set_status(_("Delete failed: {error}").format(error=exc), error=True)
             return
 
         self._dirty = False
         self._current_id = None
         self._refresh_list(select_first=True)
+        yes = _("yes")
+        no = _("no")
         self._set_status(
-            f"Eliminado '{pid}' (perfil={'sí' if result['profile'] else 'no'}, "
-            f"script={'sí' if result['script'] else 'no'}, atajo={'sí' if result['shortcut'] else 'no'})."
+            _(
+                "Deleted '{id}' (profile={profile}, script={script}, shortcut={shortcut})."
+            ).format(
+                id=pid,
+                profile=yes if result["profile"] else no,
+                script=yes if result["script"] else no,
+                shortcut=yes if result["shortcut"] else no,
+            )
         )
 
     def _on_cleanup_orphans_clicked(self, _btn: Gtk.Button) -> None:
         cleaned = self._manager.cleanup_orphaned_shortcuts()
         self._refresh_list(select_id=self._current_id)
-        self._set_status(f"Limpiados {len(cleaned)} atajo(s) huérfano(s).")
+        self._set_status(
+            ngettext(
+                "Cleaned {count} orphaned shortcut.",
+                "Cleaned {count} orphaned shortcuts.",
+                len(cleaned),
+            ).format(count=len(cleaned))
+        )

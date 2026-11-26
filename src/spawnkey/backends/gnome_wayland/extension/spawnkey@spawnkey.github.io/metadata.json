@@ -1,0 +1,7 @@
+{
+  "uuid": "spawnkey@spawnkey.github.io",
+  "name": "SpawnKey Dropdown Bridge",
+  "description": "Lightweight zero-daemon window placement, animation, and focus bridge for SpawnKey dropdowns",
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "url": "https://github.com/ItsH3x/SpawnKey"
+}

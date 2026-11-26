@@ -45,6 +45,7 @@ class ScriptGenerator:
             f"# Mode: {profile.mode.value} | Animation: {profile.animation_type.value} ({profile.direction.value})",
             "set -euo pipefail",
             "",
+            'export PATH="$HOME/.local/bin${PATH:+:$PATH}"',
             "if command -v spawnkey >/dev/null 2>&1; then",
             f"    exec spawnkey run {quoted_id} \"$@\"",
             "fi",

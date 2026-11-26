@@ -7,12 +7,21 @@ from pathlib import Path
 import re
 import shutil
 
-from spawnkey.backends.base import ShortcutBackend, ShortcutRegistrationStatus
+from spawnkey.backends.base import (
+    DiagnosticItem,
+    ShortcutBackend,
+    ShortcutRegistrationStatus,
+)
 from spawnkey.backends.kde_wayland.dbus_utils import DBusError, find_busctl, run_cmd
 from spawnkey.core.models import DropdownProfile
 from spawnkey.core.script_gen import ScriptGenerator
-from spawnkey.core.shortcuts import ParsedShortcut, parse_shortcut as parse_common_shortcut
+from spawnkey.core.shortcuts import (
+    ParsedShortcut,
+    normalize_shortcut_key,
+    parse_shortcut as parse_common_shortcut,
+)
 from spawnkey.core.storage import AppPaths
+from spawnkey.i18n import _
 
 
 # Qt6 keyboard modifier flags (qnamespace.h)
@@ -52,10 +61,21 @@ _QT_KEY_CODES: dict[str, int] = {
     "'": 0x27,
     "[": 0x5B,
     "]": 0x5D,
+    "Print": 0x01000009,
+    "Pause": 0x01000008,
+    "Menu": 0x01000055,
+    "KP_Add": 0x20000000 | 0x2B,
+    "KP_Subtract": 0x20000000 | 0x2D,
+    "KP_Multiply": 0x20000000 | 0x2A,
+    "KP_Divide": 0x20000000 | 0x2F,
+    "KP_Decimal": 0x20000000 | 0x2E,
 }
 
 for _n in range(1, 25):
     _QT_KEY_CODES[f"F{_n}"] = 0x01000030 + (_n - 1)
+
+for _d in "0123456789":
+    _QT_KEY_CODES[f"KP_{_d}"] = 0x20000000 | ord(_d)
 
 
 def shortcut_to_qt_key(parsed: ParsedShortcut) -> int:
@@ -439,3 +459,143 @@ class KDEWaylandShortcutBackend(ShortcutBackend):
             for match in re.finditer(r"^\[services\]\[(spawnkey-[^\]]+\.desktop)\]$", text, re.MULTILINE):
                 found.add(match.group(1))
         return sorted(found)
+
+    def find_system_conflicts(self, shortcut: str) -> list[str]:
+        """Scan non-SpawnKey KDE shortcut sections in kglobalshortcutsrc for collisions."""
+        target = normalize_shortcut_key(shortcut)
+        if not target or not self.kglobalshortcutsrc_path.exists():
+            return []
+
+        try:
+            text = self.kglobalshortcutsrc_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return []
+
+        conflicts: list[str] = []
+        current_section = ""
+        in_spawnkey_section = False
+
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("[") and line.endswith("]"):
+                current_section = line
+                in_spawnkey_section = line.startswith("[services][spawnkey-")
+                continue
+            if in_spawnkey_section or not current_section or "=" not in line:
+                continue
+            if current_section in ("[$Version]", "[General]"):
+                continue
+
+            action_name, val = line.split("=", 1)
+            action_name = action_name.strip()
+            if not action_name or action_name == "_k_friendly_name":
+                continue
+
+            parts = val.split(",")
+            raw_primary = parts[0].strip()
+            if not raw_primary or raw_primary.lower() == "none":
+                continue
+
+            for binding in raw_primary.split("\t"):
+                cand = binding.strip()
+                if not cand or cand.lower() == "none":
+                    continue
+                if normalize_shortcut_key(cand) == target:
+                    label = parts[2].strip() if len(parts) > 2 and parts[2].strip() else action_name
+                    sec_label = current_section.strip("[]").replace("][", " / ")
+                    desc = f"{sec_label}: {label}"
+                    if desc not in conflicts:
+                        conflicts.append(desc)
+                    break
+
+        return conflicts
+
+    def diagnose(self, profiles: list[DropdownProfile] | None = None) -> list[DiagnosticItem]:
+        """Verify KDE shortcut CLI/D-Bus tools and check for system shortcut conflicts."""
+        items: list[DiagnosticItem] = []
+
+        kwrite = shutil.which("kwriteconfig6") or shutil.which("kwriteconfig5")
+        if kwrite:
+            items.append(("ok", "kwriteconfig", _("Available: {path}").format(path=kwrite)))
+        else:
+            items.append(
+                (
+                    "error",
+                    "kwriteconfig",
+                    _("Neither 'kwriteconfig6' nor 'kwriteconfig5' was found in PATH."),
+                )
+            )
+
+        busctl = shutil.which("busctl")
+        if busctl:
+            items.append(("ok", "busctl", _("Available: {path}").format(path=busctl)))
+        else:
+            items.append(("error", "busctl", _("'busctl' was not found in PATH.")))
+
+        if not self.use_dbus:
+            items.append(("ok", "kglobalaccel", _("Isolated file mode (D-Bus disabled).")))
+        elif not busctl:
+            items.append(("warn", "kglobalaccel", _("Cannot verify because 'busctl' is missing.")))
+        else:
+            try:
+                run_cmd(
+                    [
+                        busctl,
+                        "--user",
+                        "call",
+                        "org.kde.kglobalaccel",
+                        "/kglobalaccel",
+                        "org.kde.KGlobalAccel",
+                        "allComponents",
+                    ],
+                    check=True,
+                    timeout=3.0,
+                )
+                items.append(
+                    (
+                        "ok",
+                        "kglobalaccel",
+                        _("Service org.kde.kglobalaccel is active on D-Bus."),
+                    )
+                )
+            except Exception as exc:
+                items.append(
+                    (
+                        "error",
+                        "kglobalaccel",
+                        _("Service org.kde.kglobalaccel is not responding: {error}").format(
+                            error=exc
+                        ),
+                    )
+                )
+
+        if profiles:
+            had_conflict = False
+            for profile in profiles:
+                if not profile.shortcut or not profile.shortcut.strip() or not profile.shortcut_enabled:
+                    continue
+                conflicts = self.find_system_conflicts(profile.shortcut)
+                if conflicts:
+                    had_conflict = True
+                    items.append(
+                        (
+                            "warn",
+                            _("Shortcut conflict ({profile_id})").format(profile_id=profile.id),
+                            _("'{shortcut}' conflicts with: {conflicts}").format(
+                                shortcut=profile.shortcut,
+                                conflicts=", ".join(conflicts),
+                            ),
+                        )
+                    )
+            if not had_conflict:
+                items.append(
+                    (
+                        "ok",
+                        _("Shortcut conflicts"),
+                        _("No collisions with system shortcuts."),
+                    )
+                )
+
+        return items

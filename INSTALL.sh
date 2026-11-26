@@ -6,9 +6,13 @@ APP_ID="io.github.spawnkey.App"
 DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 APPS_DIR="${DATA_HOME}/applications"
 ICONS_DIR="${DATA_HOME}/icons/hicolor/scalable/apps"
+METAINFO_DIR="${DATA_HOME}/metainfo"
+LOCALE_DIR="${DATA_HOME}/locale"
 
 WITH_DESKTOP=0
 WITH_KWIN_EFFECT=0
+WITH_PACMAN_HOOK=0
+WITH_GNOME_EXTENSION=0
 INSTALL_DEPS=0
 SHOW_DEPS=0
 
@@ -17,11 +21,13 @@ usage() {
 Uso: ./INSTALL.sh [opciones]
 
 Opciones:
-  --install-deps   Detecta el gestor de paquetes de la distribución e instala dependencias del sistema
-  --show-deps      Muestra el comando de dependencias detectado para tu distribución sin ejecutarlo
-  --desktop        Crea también un acceso directo en el Escritorio
-  --kwin-effect    Compila e instala el micro-efecto opcional de esquinas redondeadas para KDE Plasma 6
-  -h, --help       Muestra esta ayuda
+  --install-deps     Detecta el gestor de paquetes de la distribución e instala dependencias del sistema
+  --show-deps        Muestra el comando de dependencias detectado para tu distribución sin ejecutarlo
+  --desktop          Crea también un acceso directo en el Escritorio
+  --kwin-effect      Compila e instala el micro-efecto opcional de esquinas redondeadas para KDE Plasma 6
+  --pacman-hook      (Arch/CachyOS) Instala también un pacman hook para recompilar el efecto al actualizar kwin
+  --gnome-extension  Instala y habilita la extensión de GNOME Shell para control completo de ventanas en GNOME Wayland
+  -h, --help         Muestra esta ayuda
 EOF
 }
 
@@ -32,6 +38,13 @@ for arg in "$@"; do
             ;;
         --kwin-effect)
             WITH_KWIN_EFFECT=1
+            ;;
+        --pacman-hook)
+            WITH_KWIN_EFFECT=1
+            WITH_PACMAN_HOOK=1
+            ;;
+        --gnome-extension)
+            WITH_GNOME_EXTENSION=1
             ;;
         --install-deps|--deps)
             INSTALL_DEPS=1
@@ -107,19 +120,36 @@ if [[ "${INSTALL_DEPS}" -eq 1 ]]; then
     fi
 fi
 
-mkdir -p "${APPS_DIR}" "${ICONS_DIR}"
+mkdir -p "${APPS_DIR}" "${ICONS_DIR}" "${METAINFO_DIR}"
 cp "${ROOT_DIR}/assets/spawnkey.svg" "${ICONS_DIR}/${APP_ID}.svg"
+cp "${ROOT_DIR}/assets/spawnkey.svg" "${ICONS_DIR}/spawnkey.svg"
+if [[ -f "${ROOT_DIR}/assets/${APP_ID}.metainfo.xml" ]]; then
+    cp "${ROOT_DIR}/assets/${APP_ID}.metainfo.xml" "${METAINFO_DIR}/${APP_ID}.metainfo.xml"
+    chmod 644 "${METAINFO_DIR}/${APP_ID}.metainfo.xml"
+fi
+
+for lang in es en; do
+    MO_SRC="${ROOT_DIR}/src/spawnkey/locale/${lang}/LC_MESSAGES/spawnkey.mo"
+    if [[ -f "${MO_SRC}" ]]; then
+        mkdir -p "${LOCALE_DIR}/${lang}/LC_MESSAGES"
+        cp "${MO_SRC}" "${LOCALE_DIR}/${lang}/LC_MESSAGES/spawnkey.mo"
+        chmod 644 "${LOCALE_DIR}/${lang}/LC_MESSAGES/spawnkey.mo"
+    fi
+done
 
 DESKTOP_CONTENT="[Desktop Entry]
 Type=Application
 Name=SpawnKey
-GenericName=Administrador de Dropdowns
-Comment=Crea ventanas dropdown con atajos de teclado para cualquier aplicación
+GenericName=Dropdown Window Manager
+GenericName[es]=Administrador de Dropdowns
+Comment=Create keyboard-triggered dropdown windows for any application
+Comment[es]=Crea ventanas dropdown con atajos de teclado para cualquier aplicación
 Exec=${ROOT_DIR}/spawnkey-gui
 Icon=${APP_ID}
 Terminal=false
 Categories=Utility;Settings;System;
-Keywords=dropdown;quake;shortcut;atajo;ventana;spawnkey;
+Keywords=dropdown;quake;shortcut;window;
+Keywords[es]=dropdown;quake;shortcut;atajo;ventana;
 StartupWMClass=${APP_ID}
 "
 
@@ -136,7 +166,24 @@ if [[ "${WITH_DESKTOP}" -eq 1 ]]; then
 fi
 
 if [[ "${WITH_KWIN_EFFECT}" -eq 1 ]]; then
-    "${ROOT_DIR}/src/spawnkey/backends/kde_wayland/kwin_effect/BUILD.sh"
+    if [[ "${WITH_PACMAN_HOOK}" -eq 1 ]]; then
+        "${ROOT_DIR}/src/spawnkey/backends/kde_wayland/kwin_effect/BUILD.sh" --install-pacman-hook
+    else
+        "${ROOT_DIR}/src/spawnkey/backends/kde_wayland/kwin_effect/BUILD.sh"
+    fi
+fi
+
+if [[ "${WITH_GNOME_EXTENSION}" -eq 1 ]]; then
+    EXT_UUID="spawnkey@spawnkey.github.io"
+    EXT_SRC="${ROOT_DIR}/src/spawnkey/backends/gnome_wayland/extension/${EXT_UUID}"
+    EXT_DEST="${DATA_HOME}/gnome-shell/extensions/${EXT_UUID}"
+    mkdir -p "${EXT_DEST}"
+    cp -r "${EXT_SRC}/." "${EXT_DEST}/"
+    if command -v gnome-extensions >/dev/null 2>&1; then
+        gnome-extensions enable "${EXT_UUID}" >/dev/null 2>&1 || true
+    fi
+    echo "Extensión GNOME Shell instalada en: ${EXT_DEST}"
+    echo "Nota: si la extensión no estaba cargada todavía, cierra sesión y vuelve a entrar en GNOME para activarla."
 fi
 
 if command -v update-desktop-database >/dev/null 2>&1; then

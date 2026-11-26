@@ -16,7 +16,9 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSet>
 #include <QStandardPaths>
+#include <QStringList>
 #include <algorithm>
 #include <unistd.h>
 
@@ -165,17 +167,54 @@ bool SpawnKeyCornersEffect::tokenMatches(const QString &candidate, const QString
     if (candidate.isEmpty() || hint.isEmpty()) {
         return false;
     }
-    if (candidate == hint || candidate.contains(hint)) {
+    QString normCand = candidate.trimmed().toLower();
+    normCand.replace(QLatin1Char('_'), QLatin1Char('-'));
+    QString normHint = hint.trimmed().toLower();
+    normHint.replace(QLatin1Char('_'), QLatin1Char('-'));
+    if (normCand.isEmpty() || normHint.isEmpty()) {
+        return false;
+    }
+    if (normCand == normHint || normCand.contains(normHint)) {
         return true;
     }
-    if (candidate.size() >= 3 && hint.contains(candidate)) {
+    if (normCand.size() >= 3 && normHint.contains(normCand)) {
         return true;
     }
-    const qsizetype dashIdx = hint.indexOf(QLatin1Char('-'));
+    const qsizetype dashIdx = normHint.indexOf(QLatin1Char('-'));
     if (dashIdx >= 4) {
-        const QString stem = hint.left(dashIdx);
-        if (candidate == stem || candidate.contains(stem)) {
+        const QString stem = normHint.left(dashIdx);
+        if (normCand == stem || normCand.contains(stem)) {
             return true;
+        }
+    }
+    if (normHint.contains(QLatin1Char('.'))) {
+        static const QSet<QString> ignored{
+            QStringLiteral("desktop"),
+            QStringLiteral("client"),
+            QStringLiteral("linux"),
+            QStringLiteral("github"),
+            QStringLiteral("com"),
+            QStringLiteral("org"),
+            QStringLiteral("net"),
+            QStringLiteral("io"),
+            QStringLiteral("app"),
+        };
+        const QStringList parts = normHint.split(QLatin1Char('.'), Qt::SkipEmptyParts);
+        for (qsizetype p = parts.size() - 1; p >= 0; --p) {
+            const QString &seg = parts.at(p);
+            if (seg.size() < 4 || ignored.contains(seg)) {
+                continue;
+            }
+            if (normCand == seg || normCand.contains(seg)) {
+                return true;
+            }
+            const qsizetype segDash = seg.indexOf(QLatin1Char('-'));
+            if (segDash >= 4) {
+                const QString segStem = seg.left(segDash);
+                if (normCand == segStem || normCand.contains(segStem)) {
+                    return true;
+                }
+            }
         }
     }
     return false;
