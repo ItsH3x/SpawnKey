@@ -19,7 +19,7 @@ optdepends=(
     'xdg-desktop-portal: XDG GlobalShortcuts portal support'
 )
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('f5306650cf867889a34d74d900b52a6c32f592f8c08f7599ceb9dd3b6a848c8b')
 
 _enter_srcdir() {
     if [[ -d "$srcdir/$pkgname-$pkgver" ]]; then
