@@ -1396,8 +1396,8 @@ class X11WindowBackend(WindowBackend):
         display_env = os.environ.get("DISPLAY", "").strip()
         results.append(
             (
-                "DISPLAY",
                 "ok" if display_env else "error",
+                "DISPLAY",
                 display_env or "Variable DISPLAY no definida.",
             )
         )
@@ -1405,8 +1405,8 @@ class X11WindowBackend(WindowBackend):
         xrandr_path = shutil.which("xrandr")
         results.append(
             (
-                "xrandr",
                 "ok" if xrandr_path else "warn",
+                "xrandr",
                 xrandr_path or "No encontrado en PATH; se usará fallback RandR si python-xlib está disponible.",
             )
         )
@@ -1419,28 +1419,35 @@ class X11WindowBackend(WindowBackend):
             xlib_ok = False
         results.append(
             (
-                "python-xlib",
                 "ok" if xlib_ok else "warn",
+                "python-xlib",
                 "Disponible" if xlib_ok else "No instalado; usando herramientas CLI X11 como respaldo.",
             )
         )
 
         cli_tools = [name for name in ("xdotool", "wmctrl", "xprop") if shutil.which(name)]
-        results.append(
-            (
-                "Herramientas CLI X11",
-                "ok" if cli_tools else "warn",
+        control_tools = [name for name in ("xdotool", "wmctrl") if name in cli_tools]
+        if xlib_ok or control_tools:
+            cli_level = "ok" if cli_tools else "ok"
+            cli_detail = (
                 f"Disponibles: {', '.join(cli_tools)}"
                 if cli_tools
-                else "No se encontró xdotool, wmctrl ni xprop.",
+                else "No requeridas (python-xlib disponible)."
             )
-        )
+        else:
+            cli_level = "error"
+            cli_detail = (
+                f"Solo {', '.join(cli_tools)} disponible(s); instala python-xlib o xdotool/wmctrl para posicionar y ocultar ventanas en X11."
+                if cli_tools
+                else "No se encontró python-xlib, xdotool ni wmctrl; instala python-xlib o xdotool/wmctrl para controlar ventanas en X11."
+            )
+        results.append((cli_level, "Herramientas CLI X11", cli_detail))
 
         caps = self.refresh_capabilities()
         results.append(
             (
-                "Compositor (_NET_WM_CM_S0)",
                 "ok" if caps.supports_opacity else "warn",
+                "Compositor (_NET_WM_CM_S0)",
                 "Compositor X11 activo (opacidad soportada)."
                 if caps.supports_opacity
                 else "Sin compositor X11 activo; la opacidad no se aplicará.",
@@ -1448,8 +1455,8 @@ class X11WindowBackend(WindowBackend):
         )
         results.append(
             (
-                "XShape",
                 "ok" if caps.supports_corner_radius else "warn",
+                "XShape",
                 caps.corner_radius_hint,
             )
         )

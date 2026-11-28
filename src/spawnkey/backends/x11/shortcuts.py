@@ -437,6 +437,12 @@ class X11ShortcutBackend(ShortcutBackend):
                     ["-c", _XFCE_CHANNEL, "-p", old_prop, "-r"],
                     check=False,
                 )
+            # Ensure Xfce enables custom command shortcuts in xfsettingsd
+            self._run_tool(
+                "xfconf-query",
+                ["-c", _XFCE_CHANNEL, "-p", "/commands/custom/override", "-n", "-t", "bool", "-s", "true"],
+                check=False,
+            )
             self._run_tool(
                 "xfconf-query",
                 ["-c", _XFCE_CHANNEL, "-p", prop_path, "-n", "-t", "string", "-s", profile.script_path],
@@ -728,7 +734,7 @@ class X11ShortcutBackend(ShortcutBackend):
             return delegate.diagnose(profiles)  # type: ignore[no-any-return]
 
         results: list[tuple[str, str, str]] = [
-            ("Escritorio X11", "ok", f"Modo detectado: {self.desktop_kind}"),
+            ("ok", "Escritorio X11", f"Modo detectado: {self.desktop_kind}"),
         ]
 
         if self.desktop_kind in ("cinnamon", "mate"):
@@ -741,8 +747,8 @@ class X11ShortcutBackend(ShortcutBackend):
         tool_path = shutil.which(tool)
         results.append(
             (
-                f"Herramienta ({tool})",
                 "ok" if tool_path else "warn",
+                f"Herramienta ({tool})",
                 tool_path or f"'{tool}' no está en PATH.",
             )
         )
@@ -750,8 +756,8 @@ class X11ShortcutBackend(ShortcutBackend):
         bindings = self._load_store()
         results.append(
             (
-                "Registro X11",
                 "ok",
+                "Registro X11",
                 f"{len(bindings)} atajo(s) administrados en {self.store_path.name}.",
             )
         )
@@ -767,8 +773,8 @@ class X11ShortcutBackend(ShortcutBackend):
                     out_of_sync += 1
             results.append(
                 (
-                    "Perfiles",
                     "warn" if out_of_sync else "ok",
+                    "Perfiles",
                     f"{active} activos, {out_of_sync} desincronizados (de {len(profiles)}).",
                 )
             )

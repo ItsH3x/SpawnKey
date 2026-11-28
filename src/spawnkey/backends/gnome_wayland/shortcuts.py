@@ -386,10 +386,8 @@ class GnomeWaylandShortcutBackend(ShortcutBackend):
         self._write_desktop_entry(profile, component, xdg_trigger)
 
         if self.use_gsettings:
-            current_paths = self._gsettings_get_strv(MEDIA_KEYS_SCHEMA, MEDIA_KEYS_LIST_KEY)
-            if dconf_path not in current_paths:
-                current_paths.append(dconf_path)
-                self._gsettings_set_strv(MEDIA_KEYS_SCHEMA, MEDIA_KEYS_LIST_KEY, current_paths)
+            # Populate name/command/binding BEFORE updating custom-keybindings so
+            # gsd-media-keys immediately sees the populated entry when notified.
             self._gsettings_set_custom(
                 dconf_path,
                 {
@@ -398,6 +396,15 @@ class GnomeWaylandShortcutBackend(ShortcutBackend):
                     "binding": accel,
                 },
             )
+            current_paths = self._gsettings_get_strv(MEDIA_KEYS_SCHEMA, MEDIA_KEYS_LIST_KEY)
+            if dconf_path not in current_paths:
+                current_paths.append(dconf_path)
+                self._gsettings_set_strv(MEDIA_KEYS_SCHEMA, MEDIA_KEYS_LIST_KEY, current_paths)
+            else:
+                # Re-notify gsd-media-keys in case the path previously existed with empty fields
+                without_path = [p for p in current_paths if p != dconf_path]
+                self._gsettings_set_strv(MEDIA_KEYS_SCHEMA, MEDIA_KEYS_LIST_KEY, without_path)
+                self._gsettings_set_strv(MEDIA_KEYS_SCHEMA, MEDIA_KEYS_LIST_KEY, current_paths)
 
         bindings = self._load_file_store()
         bindings[component] = {
